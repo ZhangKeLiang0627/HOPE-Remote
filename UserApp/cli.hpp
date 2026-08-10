@@ -8,6 +8,7 @@
 #include "receiver.hpp"
 #include "transmitter.hpp"
 #include "ir_transmitter.hpp"
+#include "rf_transmitter.hpp"
 
 // 串口命令入口。
 //
@@ -21,7 +22,7 @@
 class Cli
 {
 public:
-    Cli(Storage& st, Signal& sig, Receiver& rx, IrTransmitter& tx);
+    Cli(Storage& st, Signal& sig, Receiver& rx, IrTransmitter& irTx, RfTransmitter& rfTx);
 
     // 清环形缓冲并启动 HAL_UART_Receive_IT 单字节接收。
     void init();
@@ -46,7 +47,8 @@ private:
     Storage&       storage_;
     Signal&        signal_;
     Receiver&      receiver_;
-    IrTransmitter& transmitter_;
+    IrTransmitter& irTransmitter_;
+    RfTransmitter& rfTransmitter_;
 
     uint8_t line_[64];
     uint8_t lineLen_ = 0;

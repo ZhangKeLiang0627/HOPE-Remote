@@ -574,6 +574,11 @@
               <FilePath>..\UserApp\ir_transmitter.cpp</FilePath>
             </File>
             <File>
+              <FileName>rf_transmitter.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>..\UserApp\rf_transmitter.cpp</FilePath>
+            </File>
+            <File>
               <FileName>main.cpp</FileName>
               <FileType>8</FileType>
               <FilePath>..\UserApp\main.cpp</FilePath>

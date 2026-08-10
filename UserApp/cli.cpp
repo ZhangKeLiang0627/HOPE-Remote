@@ -61,8 +61,8 @@ extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart)
     HAL_UART_Receive_IT(&huart1, &rxByte_, 1);
 }
 
-Cli::Cli(Storage& st, Signal& sig, Receiver& rx, IrTransmitter& tx)
-    : storage_(st), signal_(sig), receiver_(rx), transmitter_(tx)
+Cli::Cli(Storage& st, Signal& sig, Receiver& rx, IrTransmitter& irTx, RfTransmitter& rfTx)
+    : storage_(st), signal_(sig), receiver_(rx), irTransmitter_(irTx), rfTransmitter_(rfTx)
 {
 }
 
@@ -199,14 +199,10 @@ void Cli::onSend(uint16_t slot)
     }
     signal_.setLength(len);
     if (slot < 96)
-    {
-        transmitter_.play(signal_);
-        reply("FS %u OK", static_cast<unsigned>(slot));
-    }
+        irTransmitter_.play(signal_);
     else
-    {
-        reply("FS %u NOTIMPL", static_cast<unsigned>(slot));   // Task 3 接入 RfTransmitter
-    }
+        rfTransmitter_.play(signal_);
+    reply("FS %u OK", static_cast<unsigned>(slot));
 }
 
 void Cli::onHelp()
