@@ -21,7 +21,7 @@
 
 | 引脚 | 功能 |
 |---|---|
-| PA9 | 串口调试 TX（USART1_TX，115200） |
+| PA9 | 串口调试 TX（USART1_TX） |
 | PA10 | 串口调试 RX（USART1_RX） |
 | PA0 | IR 接收（ADC1_IN0，HS0038 输出） |
 | PA1 | IR 发射（38kHz 载波软件翻转） |
