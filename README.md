@@ -1,6 +1,6 @@
 # HOPE-Remote
 
-基于 STM32F401RE 的遥控码学习/复现设备（红外 IR + 433MHz 射频 RF，由 STM32F405 工程移植）。
+基于 STM32F401RE 的遥控码学习/复现设备（红外 IR + 433MHz 射频 RF）。
 
 ## 功能
 
