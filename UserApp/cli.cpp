@@ -31,12 +31,19 @@ namespace
         return c;
     }
 
-    // 两位数字 → 槽号；非法返回 0xFF
-    uint8_t parseSlot(const char* two)
+    // 2~3 位十进制 → 槽号；非法或超 131 返回 0xFFFF
+    uint16_t parseSlot(const char* digits, uint8_t n)
     {
-        if (two[0] < '0' || two[0] > '9' || two[1] < '0' || two[1] > '9')
-            return 0xFF;
-        return static_cast<uint8_t>((two[0] - '0') * 10 + (two[1] - '0'));
+        if (n < 2 || n > 3)
+            return 0xFFFF;
+        uint16_t v = 0;
+        for (uint8_t i = 0; i < n; ++i)
+        {
+            if (digits[i] < '0' || digits[i] > '9')
+                return 0xFFFF;
+            v = static_cast<uint16_t>(v * 10 + static_cast<uint16_t>(digits[i] - '0'));
+        }
+        return (v <= Storage::kNumSlots) ? v : 0xFFFF;
     }
 }
 
@@ -102,30 +109,30 @@ void Cli::dispatch()
     if (strcmp(cmd, "help") == 0)  { onHelp();  return; }
     if (strcmp(cmd, "slots") == 0) { onSlots(); return; }
 
-    if (lineLen_ == 4 && cmd[0] == 'x' && cmd[1] == 'x')
+    if ((lineLen_ == 4 || lineLen_ == 5) && cmd[0] == 'x' && cmd[1] == 'x')
     {
-        const uint8_t slot = parseSlot(cmd + 2);
-        if (slot < Storage::kNumSlots)
+        const uint16_t slot = parseSlot(cmd + 2, static_cast<uint8_t>(lineLen_ - 2));
+        if (Storage::isValidSlot(slot))
             onLearn(slot);
         else
             reply("ERR");
         return;
     }
 
-    if (lineLen_ == 4 && cmd[0] == 'f' && cmd[1] == 's')
+    if ((lineLen_ == 4 || lineLen_ == 5) && cmd[0] == 'f' && cmd[1] == 's')
     {
-        const uint8_t slot = parseSlot(cmd + 2);
-        if (slot < Storage::kNumSlots)
+        const uint16_t slot = parseSlot(cmd + 2, static_cast<uint8_t>(lineLen_ - 2));
+        if (Storage::isValidSlot(slot))
             onSend(slot);
         else
             reply("ERR");
         return;
     }
 
-    if (lineLen_ == 4 && cmd[0] == 'd' && cmd[1] == 'u')
+    if ((lineLen_ == 4 || lineLen_ == 5) && cmd[0] == 'd' && cmd[1] == 'u')
     {
-        const uint8_t slot = parseSlot(cmd + 2);
-        if (slot < Storage::kNumSlots)
+        const uint16_t slot = parseSlot(cmd + 2, static_cast<uint8_t>(lineLen_ - 2));
+        if (Storage::isValidSlot(slot))
             onDump(slot);
         else
             reply("ERR");
@@ -138,11 +145,11 @@ void Cli::dispatch()
     reply("ERR");
 }
 
-void Cli::onLearn(uint8_t slot)
+void Cli::onLearn(uint16_t slot)
 {
-    reply("REC %02u start", static_cast<unsigned>(slot));
+    reply("REC %u start", static_cast<unsigned>(slot));
     const uint32_t t0 = HAL_GetTick();
-    receiver_.start(signal_);
+    receiver_.start(signal_, (slot < 96) ? 0 : 4);   // IR=ADC1_CH0(PA0), RF=ADC1_CH4(PA4)
 
     CaptureState st;
     do
@@ -153,14 +160,14 @@ void Cli::onLearn(uint8_t slot)
 
     if (st == CaptureState::Timeout)
     {
-        reply("REC %02u TIMEOUT (%ums)", static_cast<unsigned>(slot), static_cast<unsigned>(elapsedMs));
+        reply("REC %u TIMEOUT (%ums)", static_cast<unsigned>(slot), static_cast<unsigned>(elapsedMs));
         return;
     }
 
     // 空信号（如首个边沿后只有噪声/空闲）不写 Flash
     if (signal_.length() == 0)
     {
-        reply("REC %02u EMPTY", static_cast<unsigned>(slot));
+        reply("REC %u EMPTY", static_cast<unsigned>(slot));
         return;
     }
 
@@ -174,15 +181,15 @@ void Cli::onLearn(uint8_t slot)
     // Done / BufferFull 均保存已录部分
     if (!storage_.save(slot, signal_.data(), static_cast<uint16_t>(signal_.length())))
     {
-        reply("REC %02u FLASHERR", static_cast<unsigned>(slot));
+        reply("REC %u FLASHERR", static_cast<unsigned>(slot));
         return;
     }
-    reply("REC %02u OK (%u seg, %u us, %ums)", static_cast<unsigned>(slot),
+    reply("REC %u OK (%u seg, %u us, %ums)", static_cast<unsigned>(slot),
           static_cast<unsigned>(signal_.length()), static_cast<unsigned>(sumUs),
           static_cast<unsigned>(elapsedMs));
 }
 
-void Cli::onSend(uint8_t slot)
+void Cli::onSend(uint16_t slot)
 {
     uint16_t len = 0;
     if (!storage_.load(slot, signal_.data(), len))
@@ -191,17 +198,24 @@ void Cli::onSend(uint8_t slot)
         return;
     }
     signal_.setLength(len);
-    transmitter_.play(signal_);
-    reply("FS %u OK", static_cast<unsigned>(slot));
+    if (slot < 96)
+    {
+        transmitter_.play(signal_);
+        reply("FS %u OK", static_cast<unsigned>(slot));
+    }
+    else
+    {
+        reply("FS %u NOTIMPL", static_cast<unsigned>(slot));   // Task 3 接入 RfTransmitter
+    }
 }
 
 void Cli::onHelp()
 {
-    reply("LUMOS-IRremote commands:");
-    reply("  xxNN   learn IR into slot NN (00-95)");
-    reply("  fsNN   play slot NN (00-95)");
+    reply("LUMOS-Remote commands:");
+    reply("  xxNNN  learn remote into slot (000-095 IR, 100-131 RF)");
+    reply("  fsNNN  play slot (000-095 IR, 100-131 RF)");
     reply("  slots  list slot occupancy");
-    reply("  duNN   dump slot NN segment durations (debug)");
+    reply("  duNNN  dump slot segment durations (debug)");
     reply("  dbg    sample ADC 1s: min/max/avg/edges (debug)");
     reply("  raw    capture 200ms raw signal & dump (debug)");
     reply("  help   show this");
@@ -210,24 +224,27 @@ void Cli::onHelp()
 void Cli::onSlots()
 {
     uint16_t used = 0;
-    for (uint8_t s = 0; s < Storage::kNumSlots; ++s)
+    uint16_t total = 0;
+    for (uint16_t s = 0; s < Storage::kNumSlots; ++s)
     {
+        if (!Storage::isValidSlot(s))
+            continue;
+        ++total;
         const uint16_t n = storage_.segCountOf(s);
         if (n > 0)
         {
-            reply("  %02u: OK (%u seg)", static_cast<unsigned>(s), static_cast<unsigned>(n));
+            reply("  %03u: OK (%u seg)", static_cast<unsigned>(s), static_cast<unsigned>(n));
             ++used;
         }
     }
-    reply("total: %u/%u used", static_cast<unsigned>(used),
-          static_cast<unsigned>(Storage::kNumSlots));
+    reply("total: %u/%u used", static_cast<unsigned>(used), static_cast<unsigned>(total));
 }
 
 // 诊断：把槽内录制的每个段按带符号时长μs 打印，供外部 IR 分析工具直接解析。
 //   - 正数 = 载波段(mark)，负数 = 无载波空间段(space)，逗号分隔，末尾 len=总段数
 //   - 时长是规范值(如 9000/4500/562/1687) → 真实码被提前截断(空闲阈值/同步问题)
 //   - 时长是杂乱的微秒级随机数     → 信号路径噪声(浮空/弱信号/接错)
-void Cli::onDump(uint8_t slot)
+void Cli::onDump(uint16_t slot)
 {
     uint16_t len = 0;
     if (!storage_.load(slot, signal_.data(), len))

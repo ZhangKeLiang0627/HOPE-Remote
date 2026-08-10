@@ -6,11 +6,19 @@
 
 // hadc1 / htim2 由 CubeMX 生成的 adc.c / tim.c 定义，头文件已 extern "C" 声明
 
-void Receiver::start(Signal& sig)
+void Receiver::start(Signal& sig, uint8_t adcChannel)
 {
     sig.clear();
     sig_ = &sig;
     state_ = CaptureState::WaitingEdge;
+
+    // IR/RF 共用一个 ADC1：先按通道切到对应引脚（通道未变化时为 no-op）。
+    // 仅在通道变化时 HAL_ADC_Stop + 重配，避免连续模式反复启停的 EOC/OVR 错乱。
+    if (!selectChannel(adcChannel))
+    {
+        state_ = CaptureState::Timeout;   // 通道配置失败，直接判超时结束
+        return;
+    }
 
     // 连续转换(CONT)反复启停后 EOC/OVR 状态易错乱，导致边沿检测中途失效
     //（实测症状：REC 早停/超时；而 onRaw 用干净启动能抓全帧）。
@@ -28,6 +36,21 @@ void Receiver::start(Signal& sig)
     prevSample_ = static_cast<uint16_t>(sum / 8);
 
     startTick_ = HAL_GetTick();
+}
+
+bool Receiver::selectChannel(uint8_t channel)
+{
+    if (channel == channel_)
+        return true;
+    HAL_ADC_Stop(&hadc1);
+    ADC_ChannelConfTypeDef cfg = {0};
+    cfg.Channel      = (channel == 4) ? ADC_CHANNEL_4 : ADC_CHANNEL_0;
+    cfg.Rank         = 1;
+    cfg.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+    if (HAL_ADC_ConfigChannel(&hadc1, &cfg) != HAL_OK)
+        return false;
+    channel_ = channel;
+    return true;
 }
 
 uint16_t Receiver::readAdc()

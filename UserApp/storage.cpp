@@ -8,10 +8,6 @@ namespace
     // 魔数递增使旧约定槽自然失效（无需擦除旧区）。
     constexpr uint32_t kMagicWord = 0x34305249u;
 
-    // 每物理扇区的槽数上限：覆盖写入时需把同扇区其它有效槽暂存 RAM，
-    // 64KB 暂存 / 2KB 每槽 = 32 槽。
-    constexpr uint8_t  kSlotsPerSector = 32;
-
     // 每槽 2KB = 512 字（整块擦除态检查用）。
     constexpr uint32_t kWordsPerSlot = 512;   // 2KB / 4B
 
@@ -31,31 +27,57 @@ namespace
         }
         return cks;
     }
+
+    // 槽号 → 物理扇区组映射。每组槽数固定 32（=64KB 暂存上限）。
+    struct SlotGroup
+    {
+        uint16_t base;      // 组内首槽号
+        uint8_t  count;     // 槽数
+        uint32_t sector;    // FLASH_SECTOR_x
+        uint32_t baseAddr;  // 扇区基址
+    };
+
+    constexpr SlotGroup kGroups[] = {
+        {  0, 32, FLASH_SECTOR_4, 0x08010000u },
+        { 32, 32, FLASH_SECTOR_5, 0x08020000u },
+        { 64, 32, FLASH_SECTOR_6, 0x08040000u },
+        {100, 32, FLASH_SECTOR_7, 0x08060000u },
+    };
+
+    const SlotGroup* slotGroup(uint16_t slot)
+    {
+        for (const SlotGroup& g : kGroups)
+        {
+            if (slot >= g.base && slot < static_cast<uint16_t>(g.base + g.count))
+                return &g;
+        }
+        return nullptr;
+    }
 }
 
-uint32_t Storage::slotAddr(uint8_t slot)
+bool Storage::isValidSlot(uint16_t slot)
 {
-    if (slot < 32)
-        return 0x08010000u + static_cast<uint32_t>(slot) * 0x800u;          // 扇区4
-    if (slot < 64)
-        return 0x08020000u + static_cast<uint32_t>(slot - 32) * 0x800u;     // 扇区5 前部
-    return 0x08040000u + static_cast<uint32_t>(slot - 64) * 0x800u;         // 扇区6 前部
+    return slotGroup(slot) != nullptr;
 }
 
-uint32_t Storage::sectorOf(uint8_t slot)
+uint32_t Storage::slotAddr(uint16_t slot)
 {
-    if (slot < 32) return FLASH_SECTOR_4;
-    if (slot < 64) return FLASH_SECTOR_5;
-    return FLASH_SECTOR_6;
+    const SlotGroup* g = slotGroup(slot);
+    return g->baseAddr + static_cast<uint32_t>(slot - g->base) * 0x800u;
 }
 
-uint32_t Storage::capacitySegs(uint8_t slot)
+uint32_t Storage::sectorOf(uint16_t slot)
+{
+    return slotGroup(slot)->sector;
+}
+
+uint32_t Storage::capacitySegs(uint16_t slot)
 {
     (void)slot;
     return kMaxSegsPerSlot;   // 510 段
 }
 
-bool Storage::programSlot(uint8_t slot, const uint32_t* segData, uint16_t segCount)
+bool Storage::programSlot(uint16_t slot, const uint32_t* segData, uint16_t segCount)
 {
     if (segCount > kMaxSegsPerSlot)
         return false;
@@ -90,12 +112,14 @@ bool Storage::eraseSector(uint32_t sector)
     return HAL_FLASHEx_Erase(&eraseInit, &sectorError) == HAL_OK;
 }
 
-bool Storage::collectSiblings(uint8_t slot, ScratchEntry* sibs, uint8_t& nSib)
+bool Storage::collectSiblings(uint16_t slot, ScratchEntry* sibs, uint8_t& nSib)
 {
     nSib = 0;
-    const uint8_t base = static_cast<uint8_t>((slot / kSlotsPerSector) * kSlotsPerSector);
+    const SlotGroup* g = slotGroup(slot);
+    if (g == nullptr)
+        return false;
     uint32_t used = 0;
-    for (uint8_t s = base; s < base + kSlotsPerSector; ++s)
+    for (uint16_t s = g->base; s < static_cast<uint16_t>(g->base + g->count); ++s)
     {
         if (s == slot || !isValid(s))
             continue;
@@ -112,9 +136,9 @@ bool Storage::collectSiblings(uint8_t slot, ScratchEntry* sibs, uint8_t& nSib)
     return true;
 }
 
-bool Storage::save(uint8_t slot, const uint32_t* segData, uint16_t segCount)
+bool Storage::save(uint16_t slot, const uint32_t* segData, uint16_t segCount)
 {
-    if (slot >= kNumSlots || segData == nullptr)
+    if (slotGroup(slot) == nullptr || segData == nullptr)
         return false;
     if (segCount == 0 || segCount > capacitySegs(slot))
         return false;
@@ -141,7 +165,7 @@ bool Storage::save(uint8_t slot, const uint32_t* segData, uint16_t segCount)
     }
 
     // 覆盖写入：先暂存同扇区其它有效槽 → 擦整扇区 → 重写兄弟槽 → 写本槽
-    ScratchEntry sibs[kSlotsPerSector];
+    ScratchEntry sibs[Storage::kSlotsPerGroup];
     uint8_t nSib = 0;
     if (!collectSiblings(slot, sibs, nSib))
         return false;
@@ -165,7 +189,7 @@ bool Storage::save(uint8_t slot, const uint32_t* segData, uint16_t segCount)
     return ok;
 }
 
-bool Storage::load(uint8_t slot, uint32_t* out, uint16_t& segCount)
+bool Storage::load(uint16_t slot, uint32_t* out, uint16_t& segCount)
 {
     if (!isValid(slot))
     {
@@ -181,9 +205,9 @@ bool Storage::load(uint8_t slot, uint32_t* out, uint16_t& segCount)
     return true;
 }
 
-bool Storage::isValid(uint8_t slot) const
+bool Storage::isValid(uint16_t slot) const
 {
-    if (slot >= kNumSlots)
+    if (slotGroup(slot) == nullptr)
         return false;
 
     const uint8_t* p = reinterpret_cast<const uint8_t*>(slotAddr(slot));
@@ -202,14 +226,14 @@ bool Storage::isValid(uint8_t slot) const
     return true;
 }
 
-bool Storage::erase(uint8_t slot)
+bool Storage::erase(uint16_t slot)
 {
-    if (slot >= kNumSlots)
+    if (slotGroup(slot) == nullptr)
         return false;
     if (!isValid(slot))
         return true;   // 空槽 no-op
 
-    ScratchEntry sibs[kSlotsPerSector];
+    ScratchEntry sibs[Storage::kSlotsPerGroup];
     uint8_t nSib = 0;
     if (!collectSiblings(slot, sibs, nSib))
         return false;
@@ -232,7 +256,7 @@ bool Storage::erase(uint8_t slot)
     return true;
 }
 
-uint16_t Storage::segCountOf(uint8_t slot) const
+uint16_t Storage::segCountOf(uint16_t slot) const
 {
     if (!isValid(slot))
         return 0;
