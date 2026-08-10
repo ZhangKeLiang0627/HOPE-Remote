@@ -18,14 +18,8 @@ class App
 public:
     void run()
     {
-        // PA2 = 射频发射 DATA（推挽输出；GPIOA 时钟已由 MX_GPIO_Init 使能）
-        GPIO_InitTypeDef g = {0};
-        g.Pin   = GPIO_PIN_2;
-        g.Mode  = GPIO_MODE_OUTPUT_PP;
-        g.Pull  = GPIO_NOPULL;
-        g.Speed = GPIO_SPEED_FREQ_LOW;
-        HAL_GPIO_Init(GPIOA, &g);
-
+        // 注意：PA2(射频发射 DATA) 与 PA4(射频接收 DATA/ADC1_IN4) 的引脚初始化
+        // 均通过 CubeMX 图形化配置生成（见 docs/superpowers/plans 说明），此处不手写。
         cli_.init();
         Usart_debugMsg("HOPE-Remote ready (help for commands)");
         for (;;)
