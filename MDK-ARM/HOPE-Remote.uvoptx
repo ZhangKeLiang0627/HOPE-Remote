@@ -582,8 +582,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\UserApp\ir_receiver.cpp</PathWithFileName>
-      <FilenameWithoutPath>ir_receiver.cpp</FilenameWithoutPath>
+      <PathWithFileName>..\UserApp\receiver.cpp</PathWithFileName>
+      <FilenameWithoutPath>receiver.cpp</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -594,8 +594,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\UserApp\ir_signal.cpp</PathWithFileName>
-      <FilenameWithoutPath>ir_signal.cpp</FilenameWithoutPath>
+      <PathWithFileName>..\UserApp\signal.cpp</PathWithFileName>
+      <FilenameWithoutPath>signal.cpp</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -606,8 +606,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\UserApp\ir_storage.cpp</PathWithFileName>
-      <FilenameWithoutPath>ir_storage.cpp</FilenameWithoutPath>
+      <PathWithFileName>..\UserApp\storage.cpp</PathWithFileName>
+      <FilenameWithoutPath>storage.cpp</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>

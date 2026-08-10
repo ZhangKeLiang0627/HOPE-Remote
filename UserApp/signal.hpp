@@ -1,21 +1,21 @@
-#ifndef IR_SIGNAL_HPP
-#define IR_SIGNAL_HPP
+#ifndef SIGNAL_HPP
+#define SIGNAL_HPP
 
 #include <array>
 #include <cstdint>
 
-// 红外波形数据载体。
+// 遥控信号波形数据载体（红外/射频通用）。
 //
 // 段编码（4 字节/段）：
 //   uint32_t seg : bit31 = 电平(1=载波段/mark, 0=无载波空间段/space) | bit30:0 = 时长(1~2147483647 μs)
 // 电平为真实 IR 信号约定（接收时已对 HS0038 反相输出取反），发送直接按此电平驱动。
-// 超长电平由 append() 自动拆成多段同电平（防御性，真实 IR 段不会触发）。
+// 超长电平由 append() 自动拆成多段同电平（防御性，真实段不会触发）。
 //
 // 缓冲固定 2KB（510 段），与 Flash 槽容量一致。此对象应作为全局/静态成员持有，避免大数组入栈。
-class IrSignal
+class Signal
 {
 public:
-    static constexpr uint32_t kMaxSegments = 510;     // 2KB 槽 / 4B（与 IrStorage::kMaxSegsPerSlot 对齐）
+    static constexpr uint32_t kMaxSegments = 510;     // 2KB 槽 / 4B（与 Storage::kMaxSegsPerSlot 对齐）
     static constexpr uint32_t kMaxSegUs    = 0x7FFFFFFF; // bit30:0 上限
 
     void clear() { len_ = 0; }
@@ -47,4 +47,4 @@ private:
     uint32_t len_ = 0;
 };
 
-#endif // IR_SIGNAL_HPP
+#endif // SIGNAL_HPP

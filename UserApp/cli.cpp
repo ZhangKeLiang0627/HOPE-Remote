@@ -54,7 +54,7 @@ extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart)
     HAL_UART_Receive_IT(&huart1, &rxByte_, 1);
 }
 
-Cli::Cli(IrStorage& st, IrSignal& sig, IrReceiver& rx, IrTransmitter& tx)
+Cli::Cli(Storage& st, Signal& sig, Receiver& rx, IrTransmitter& tx)
     : storage_(st), signal_(sig), receiver_(rx), transmitter_(tx)
 {
 }
@@ -105,7 +105,7 @@ void Cli::dispatch()
     if (lineLen_ == 4 && cmd[0] == 'x' && cmd[1] == 'x')
     {
         const uint8_t slot = parseSlot(cmd + 2);
-        if (slot < IrStorage::kNumSlots)
+        if (slot < Storage::kNumSlots)
             onLearn(slot);
         else
             reply("ERR");
@@ -115,7 +115,7 @@ void Cli::dispatch()
     if (lineLen_ == 4 && cmd[0] == 'f' && cmd[1] == 's')
     {
         const uint8_t slot = parseSlot(cmd + 2);
-        if (slot < IrStorage::kNumSlots)
+        if (slot < Storage::kNumSlots)
             onSend(slot);
         else
             reply("ERR");
@@ -125,7 +125,7 @@ void Cli::dispatch()
     if (lineLen_ == 4 && cmd[0] == 'd' && cmd[1] == 'u')
     {
         const uint8_t slot = parseSlot(cmd + 2);
-        if (slot < IrStorage::kNumSlots)
+        if (slot < Storage::kNumSlots)
             onDump(slot);
         else
             reply("ERR");
@@ -210,7 +210,7 @@ void Cli::onHelp()
 void Cli::onSlots()
 {
     uint16_t used = 0;
-    for (uint8_t s = 0; s < IrStorage::kNumSlots; ++s)
+    for (uint8_t s = 0; s < Storage::kNumSlots; ++s)
     {
         const uint16_t n = storage_.segCountOf(s);
         if (n > 0)
@@ -220,7 +220,7 @@ void Cli::onSlots()
         }
     }
     reply("total: %u/%u used", static_cast<unsigned>(used),
-          static_cast<unsigned>(IrStorage::kNumSlots));
+          static_cast<unsigned>(Storage::kNumSlots));
 }
 
 // 诊断：把槽内录制的每个段按带符号时长μs 打印，供外部 IR 分析工具直接解析。
@@ -242,7 +242,7 @@ void Cli::onDump(uint8_t slot)
 
 // 带符号逗号分隔打印：正=载波段(mark)、负=无载波空间段(space)（时长μs）。
 // 全部段单行连续输出（分块裸发不插换行，避免 reply() 的 \r\n 分行），末尾 len=<总段数>。
-void Cli::printRaw(const IrSignal& sig, uint32_t len)
+void Cli::printRaw(const Signal& sig, uint32_t len)
 {
     char buf[160];
     char* p = buf;
@@ -294,7 +294,7 @@ void Cli::onDbg()
         sum += v;
         ++cnt;
         const uint16_t d = (v > prev) ? (v - prev) : (prev - v);
-        if (d > IrReceiver::kEdgeThreshold)
+        if (d > Receiver::kEdgeThreshold)
             ++edges;
         prev = v;
     }
@@ -336,7 +336,7 @@ void Cli::onRaw()
         HAL_ADC_PollForConversion(&hadc1, 1);
         const uint16_t v = static_cast<uint16_t>(HAL_ADC_GetValue(&hadc1));
         const uint16_t d = (v > prev) ? (v - prev) : (prev - v);
-        if (d > IrReceiver::kEdgeThreshold)
+        if (d > Receiver::kEdgeThreshold)
         {
             if (!started)
             {

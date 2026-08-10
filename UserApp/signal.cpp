@@ -1,6 +1,6 @@
-#include "ir_signal.hpp"
+#include "signal.hpp"
 
-bool IrSignal::append(bool level, uint32_t us)
+bool Signal::append(bool level, uint32_t us)
 {
     const uint32_t levelBit = level ? 0x80000000u : 0u;
 

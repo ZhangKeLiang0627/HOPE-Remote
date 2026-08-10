@@ -1,5 +1,5 @@
-#ifndef IR_STORAGE_HPP
-#define IR_STORAGE_HPP
+#ifndef STORAGE_HPP
+#define STORAGE_HPP
 
 #include <cstdint>
 
@@ -15,7 +15,7 @@
 // 段为 4B/段(uint32)，每槽最多 510 段（2048B − 8B 槽头）。电平取反(载波=高)存储。
 // 首次写入直接编程无需擦除；覆盖写入需擦整扇区并重写同扇区其它有效槽。
 // 擦除态全 0xFF，魔数不符即视为空/无效槽。
-class IrStorage
+class Storage
 {
 public:
     static constexpr uint8_t  kNumSlots = 96;
@@ -59,4 +59,4 @@ private:
     bool collectSiblings(uint8_t slot, ScratchEntry* sibs, uint8_t& nSib);
 };
 
-#endif // IR_STORAGE_HPP
+#endif // STORAGE_HPP

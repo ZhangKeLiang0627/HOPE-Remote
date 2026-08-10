@@ -1,4 +1,4 @@
-#include "ir_receiver.hpp"
+#include "receiver.hpp"
 
 #include "adc.h"
 #include "tim.h"
@@ -6,7 +6,7 @@
 
 // hadc1 / htim2 由 CubeMX 生成的 adc.c / tim.c 定义，头文件已 extern "C" 声明
 
-void IrReceiver::start(IrSignal& sig)
+void Receiver::start(Signal& sig)
 {
     sig.clear();
     sig_ = &sig;
@@ -30,7 +30,7 @@ void IrReceiver::start(IrSignal& sig)
     startTick_ = HAL_GetTick();
 }
 
-uint16_t IrReceiver::readAdc()
+uint16_t Receiver::readAdc()
 {
     // 单次模式：每次采样显式软件触发一次转换，等 EOC 后读 DR。
     // 这是最稳的用法——不存在连续模式下的 OVR 停转 / EOC 卡死，
@@ -48,7 +48,7 @@ uint16_t IrReceiver::readAdc()
     return static_cast<uint16_t>(HAL_ADC_GetValue(&hadc1));
 }
 
-CaptureState IrReceiver::poll()
+CaptureState Receiver::poll()
 {
     if (state_ != CaptureState::WaitingEdge && state_ != CaptureState::Capturing)
         return state_;
@@ -118,9 +118,9 @@ CaptureState IrReceiver::poll()
         // 防御性兜底：TIM2 现为 32 位(CNT 上限≈4295s)，kMaxSegUs(≈2147s)仍先于
         // CNT 翻转触发，超长电平段被拆包。真实 IR 段远低于此，正常不会走到。
         //（高电平段早已被空闲判定结束，仅极端超长载波低电平段会到这里。）
-        if (cnt >= IrSignal::kMaxSegUs)
+        if (cnt >= Signal::kMaxSegUs)
         {
-            if (!sig_->append(!levelHigh_, IrSignal::kMaxSegUs))
+            if (!sig_->append(!levelHigh_, Signal::kMaxSegUs))
             {
                 state_ = CaptureState::BufferFull;
                 return state_;

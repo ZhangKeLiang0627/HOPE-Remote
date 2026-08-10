@@ -554,19 +554,19 @@
           <GroupName>UserApp</GroupName>
           <Files>
             <File>
-              <FileName>ir_receiver.cpp</FileName>
+              <FileName>receiver.cpp</FileName>
               <FileType>8</FileType>
-              <FilePath>..\UserApp\ir_receiver.cpp</FilePath>
+              <FilePath>..\UserApp\receiver.cpp</FilePath>
             </File>
             <File>
-              <FileName>ir_signal.cpp</FileName>
+              <FileName>signal.cpp</FileName>
               <FileType>8</FileType>
-              <FilePath>..\UserApp\ir_signal.cpp</FilePath>
+              <FilePath>..\UserApp\signal.cpp</FilePath>
             </File>
             <File>
-              <FileName>ir_storage.cpp</FileName>
+              <FileName>storage.cpp</FileName>
               <FileType>8</FileType>
-              <FilePath>..\UserApp\ir_storage.cpp</FilePath>
+              <FilePath>..\UserApp\storage.cpp</FilePath>
             </File>
             <File>
               <FileName>ir_transmitter.cpp</FileName>

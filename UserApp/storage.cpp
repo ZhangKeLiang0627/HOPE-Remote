@@ -1,4 +1,4 @@
-#include "ir_storage.hpp"
+#include "storage.hpp"
 #include "stm32f4xx_hal.h"
 
 namespace
@@ -33,7 +33,7 @@ namespace
     }
 }
 
-uint32_t IrStorage::slotAddr(uint8_t slot)
+uint32_t Storage::slotAddr(uint8_t slot)
 {
     if (slot < 32)
         return 0x08010000u + static_cast<uint32_t>(slot) * 0x800u;          // 扇区4
@@ -42,20 +42,20 @@ uint32_t IrStorage::slotAddr(uint8_t slot)
     return 0x08040000u + static_cast<uint32_t>(slot - 64) * 0x800u;         // 扇区6 前部
 }
 
-uint32_t IrStorage::sectorOf(uint8_t slot)
+uint32_t Storage::sectorOf(uint8_t slot)
 {
     if (slot < 32) return FLASH_SECTOR_4;
     if (slot < 64) return FLASH_SECTOR_5;
     return FLASH_SECTOR_6;
 }
 
-uint32_t IrStorage::capacitySegs(uint8_t slot)
+uint32_t Storage::capacitySegs(uint8_t slot)
 {
     (void)slot;
     return kMaxSegsPerSlot;   // 510 段
 }
 
-bool IrStorage::programSlot(uint8_t slot, const uint32_t* segData, uint16_t segCount)
+bool Storage::programSlot(uint8_t slot, const uint32_t* segData, uint16_t segCount)
 {
     if (segCount > kMaxSegsPerSlot)
         return false;
@@ -78,7 +78,7 @@ bool IrStorage::programSlot(uint8_t slot, const uint32_t* segData, uint16_t segC
     return true;
 }
 
-bool IrStorage::eraseSector(uint32_t sector)
+bool Storage::eraseSector(uint32_t sector)
 {
     FLASH_EraseInitTypeDef eraseInit = {0};
     eraseInit.TypeErase = FLASH_TYPEERASE_SECTORS;
@@ -90,7 +90,7 @@ bool IrStorage::eraseSector(uint32_t sector)
     return HAL_FLASHEx_Erase(&eraseInit, &sectorError) == HAL_OK;
 }
 
-bool IrStorage::collectSiblings(uint8_t slot, ScratchEntry* sibs, uint8_t& nSib)
+bool Storage::collectSiblings(uint8_t slot, ScratchEntry* sibs, uint8_t& nSib)
 {
     nSib = 0;
     const uint8_t base = static_cast<uint8_t>((slot / kSlotsPerSector) * kSlotsPerSector);
@@ -112,7 +112,7 @@ bool IrStorage::collectSiblings(uint8_t slot, ScratchEntry* sibs, uint8_t& nSib)
     return true;
 }
 
-bool IrStorage::save(uint8_t slot, const uint32_t* segData, uint16_t segCount)
+bool Storage::save(uint8_t slot, const uint32_t* segData, uint16_t segCount)
 {
     if (slot >= kNumSlots || segData == nullptr)
         return false;
@@ -165,7 +165,7 @@ bool IrStorage::save(uint8_t slot, const uint32_t* segData, uint16_t segCount)
     return ok;
 }
 
-bool IrStorage::load(uint8_t slot, uint32_t* out, uint16_t& segCount)
+bool Storage::load(uint8_t slot, uint32_t* out, uint16_t& segCount)
 {
     if (!isValid(slot))
     {
@@ -181,7 +181,7 @@ bool IrStorage::load(uint8_t slot, uint32_t* out, uint16_t& segCount)
     return true;
 }
 
-bool IrStorage::isValid(uint8_t slot) const
+bool Storage::isValid(uint8_t slot) const
 {
     if (slot >= kNumSlots)
         return false;
@@ -202,7 +202,7 @@ bool IrStorage::isValid(uint8_t slot) const
     return true;
 }
 
-bool IrStorage::erase(uint8_t slot)
+bool Storage::erase(uint8_t slot)
 {
     if (slot >= kNumSlots)
         return false;
@@ -232,7 +232,7 @@ bool IrStorage::erase(uint8_t slot)
     return true;
 }
 
-uint16_t IrStorage::segCountOf(uint8_t slot) const
+uint16_t Storage::segCountOf(uint8_t slot) const
 {
     if (!isValid(slot))
         return 0;

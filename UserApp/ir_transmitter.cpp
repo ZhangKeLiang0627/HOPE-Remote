@@ -14,7 +14,7 @@ namespace
     constexpr uint32_t kCarrierOffUs = 17;   // 载波关
 }
 
-void IrTransmitter::play(const IrSignal& sig)
+void IrTransmitter::play(const Signal& sig)
 {
     const uint32_t count = sig.length();
     for (uint32_t i = 0; i < count; ++i)

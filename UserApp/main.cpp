@@ -2,14 +2,15 @@
 #include "interface_uart.h"
 
 #include "tim.h"
-#include "ir_signal.hpp"
-#include "ir_storage.hpp"
-#include "ir_receiver.hpp"
+#include "signal.hpp"
+#include "storage.hpp"
+#include "receiver.hpp"
+#include "transmitter.hpp"
 #include "ir_transmitter.hpp"
 #include "cli.hpp"
 
-static_assert(IrSignal::kMaxSegments == IrStorage::kMaxSegsPerSlot,
-              "IrSignal 缓冲须与 Flash 槽容量一致");
+static_assert(Signal::kMaxSegments == Storage::kMaxSegsPerSlot,
+              "Signal 缓冲须与 Flash 槽容量一致");
 
 class App
 {
@@ -25,9 +26,9 @@ public:
     }
 
 private:
-    IrStorage     storage_;
-    IrSignal      signal_;      // 2KB 波形缓冲（510 段）
-    IrReceiver    receiver_;
+    Storage        storage_;
+    Signal         signal_;      // 2KB 波形缓冲（510 段）
+    Receiver       receiver_;
     IrTransmitter transmitter_;
     Cli           cli_{storage_, signal_, receiver_, transmitter_};
 };
