@@ -20,13 +20,19 @@ void Receiver::start(Signal& sig, uint8_t adcChannel)
         return;
     }
 
-    // 连续转换(CONT)反复启停后 EOC/OVR 状态易错乱，导致边沿检测中途失效
-    //（实测症状：REC 早停/超时；而 onRaw 用干净启动能抓全帧）。
-    // 改用 CubeMX 的单次转换模式，由 readAdc 每次显式 SWSTART 触发一次转换，
-    // 状态机干净、不会过载(OVR)停转，也不受上一次命令残留状态影响。
-    // 不要在这里 HAL_ADC_Stop：连续模式下 Stop 后重新 Start 会让 EOC 卡死
-    //（实测 xx01 从此必 TIMEOUT 15001ms），单次模式直接 Start 即干净启动。
-    ADC1->CR2 &= ~ADC_CR2_CONT;   // 保持单次转换模式
+    // IR 用单次转换模式：由 readAdc 显式 SWSTART 触发，状态机干净、不会 OVR 停转，
+    // 也不受上一次命令残留状态影响（连续模式反复启停会 EOC 卡死 → xx01 TIMEOUT）。
+    // RF(PA4) 改用连续模式：单次 SWSTART 在空闲线上会读出交替假边沿（实测不按遥控
+    // 也能填满 510 段）；raw/dbg 的连续模式采同一条线却稳定干净（3~35 edges/秒），
+    // 并能采到干净的 400/1200μs 真实帧，故 RF 走连续模式。
+    // 注意：连续模式必须配合 3 周期采样（见 selectChannel），84 周期会重新诱发假边沿。
+    ADC1->CR2 &= ~ADC_CR2_CONT;
+    contMode_ = false;
+    if (adcChannel == 4)
+    {
+        ADC1->CR2 |= ADC_CR2_CONT;
+        contMode_ = true;
+    }
     HAL_ADC_Start(&hadc1);        // 使能 ADC（含内部稳定延时）
 
     // 空闲基准：连读若干次取平均，作为首个边沿判定的前值
@@ -46,6 +52,9 @@ bool Receiver::selectChannel(uint8_t channel)
     ADC_ChannelConfTypeDef cfg = {0};
     cfg.Channel      = (channel == 4) ? ADC_CHANNEL_4 : ADC_CHANNEL_0;
     cfg.Rank         = 1;
+    // 采样时间统一 3 周期：实测 RF(PA4) 拉长到 84 周期(≈4μs)反而让空闲线采出假边沿
+    //（长采样期间 S&H 经 10k 串联电阻对 R1 DATA 强拉电流，诱发振荡）。只有 3 周期 +
+    // 连续模式（即 raw 的配置）才是稳定干净的组合。IR(PA0, HS0038 低阻)同样 3 周期。
     cfg.SamplingTime = ADC_SAMPLETIME_3CYCLES;
     if (HAL_ADC_ConfigChannel(&hadc1, &cfg) != HAL_OK)
         return false;
@@ -55,10 +64,22 @@ bool Receiver::selectChannel(uint8_t channel)
 
 uint16_t Receiver::readAdc()
 {
-    // 单次模式：每次采样显式软件触发一次转换，等 EOC 后读 DR。
+    if (contMode_)
+    {
+        // 连续模式（RF/PA4）：转换自动连续进行，读 DR 自动清 EOC，
+        // 每次调用等下一次转换完成即可。raw/dbg 已验证该模式下 PA4 读数稳定。
+        if (HAL_ADC_PollForConversion(&hadc1, 1) != HAL_OK)
+        {
+            // 兜底：偶发 OVR 时清标志重试一次
+            __HAL_ADC_CLEAR_FLAG(&hadc1, ADC_FLAG_OVR | ADC_FLAG_EOC);
+            HAL_ADC_PollForConversion(&hadc1, 1);
+        }
+        return static_cast<uint16_t>(HAL_ADC_GetValue(&hadc1));
+    }
+
+    // 单次模式（IR/PA0）：每次采样显式软件触发一次转换，等 EOC 后读 DR。
     // 这是最稳的用法——不存在连续模式下的 OVR 停转 / EOC 卡死，
     // 也不依赖上一次命令留下的 ADC 运行状态。
-    // ADC1 在 CubeMX 配置为单次转换，Start 后 CR2.CONT 为 0。
     __HAL_ADC_CLEAR_FLAG(&hadc1, ADC_FLAG_OVR | ADC_FLAG_EOC);
     ADC1->CR2 |= ADC_CR2_SWSTART;
     if (HAL_ADC_PollForConversion(&hadc1, 1) != HAL_OK)

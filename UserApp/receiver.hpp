@@ -30,11 +30,15 @@ public:
 
     Signal* activeSignal() { return sig_; }
 
+    // 运行时切换 ADC 通道（0=IR/PA0，4=RF/PA4），仅在通道变化时停 ADC 重配；
+    // 返回 false 表示配置失败。这是运行时通道配置，不属于 CubeMX 引脚初始化。
+    bool selectChannel(uint8_t channel);
+
+    // 当前 ADC 通道（0 或 4）。
+    uint8_t channel() const { return channel_; }
+
 private:
     uint16_t readAdc();
-
-    // 仅在通道变化时停 ADC 并重配通道；返回 false 表示配置失败。
-    bool selectChannel(uint8_t channel);
 
     Signal*      sig_        = nullptr;
     uint32_t     startTick_  = 0;
@@ -42,6 +46,7 @@ private:
     bool         levelHigh_  = false;
     CaptureState state_      = CaptureState::Idle;
     uint8_t      channel_    = 0;   // 当前配置的 ADC 通道（0 或 4）
+    bool         contMode_   = false; // 采样模式：RF(PA4) 走连续模式（raw 已验证稳定）
 };
 
 #endif // RECEIVER_HPP

@@ -139,8 +139,14 @@ void Cli::dispatch()
         return;
     }
 
-    if (strcmp(cmd, "dbg") == 0) { onDbg(); return; }
-    if (strcmp(cmd, "raw") == 0) { onRaw(); return; }
+    // 诊断命令：dbg/raw 默认采「当前通道」（最后一次 xxNN 学习用的通道），
+    // 也可 dbg0/dbg4、raw0/raw4 显式指定 IR/RF，避免分不清采的是哪一路。
+    if (strcmp(cmd, "dbg") == 0)          { onDbg(0xFF); return; }
+    if (cmd[0] == 'd' && cmd[1] == 'b' && cmd[2] == 'g' && cmd[4] == '\0' &&
+        (cmd[3] == '0' || cmd[3] == '4')) { onDbg(static_cast<uint8_t>(cmd[3] - '0')); return; }
+    if (strcmp(cmd, "raw") == 0)          { onRaw(0xFF); return; }
+    if (cmd[0] == 'r' && cmd[1] == 'a' && cmd[2] == 'w' && cmd[4] == '\0' &&
+        (cmd[3] == '0' || cmd[3] == '4')) { onRaw(static_cast<uint8_t>(cmd[3] - '0')); return; }
 
     reply("ERR");
 }
@@ -212,8 +218,10 @@ void Cli::onHelp()
     reply("  fsNNN  play slot (000-095 IR, 100-131 RF)");
     reply("  slots  list slot occupancy");
     reply("  duNNN  dump slot segment durations (debug)");
-    reply("  dbg    sample ADC 1s: min/max/avg/edges (debug)");
-    reply("  raw    capture 200ms raw signal & dump (debug)");
+    reply("  dbg    sample ADC 1s: min/max/avg/edges (current channel)");
+    reply("  dbg0   ditto on IR/PA0, dbg4 on RF/PA4");
+    reply("  raw    capture 3000ms raw signal & dump (current channel)");
+    reply("  raw0   ditto on IR/PA0, raw4 on RF/PA4");
     reply("  help   show this");
 }
 
@@ -284,9 +292,17 @@ void Cli::printRaw(const Signal& sig, uint32_t len)
 // 期间按遥控器按键，可看出 PA0 实际电平特征：
 //   - 干净信号: 空闲≈4095、载波≈0，min≈0 max≈4095
 //   - 浮空/噪声: 不按键时 min 也远小于 max、edges 很大
-void Cli::onDbg()
+void Cli::onDbg(uint8_t channel)
 {
-    reply("DBG: press remote button within 1s...");
+    // 0xFF 表示沿用当前通道；显式给定则先切通道（仅在变化时停 ADC 重配）
+    if (channel != 0xFF && !receiver_.selectChannel(channel))
+    {
+        reply("ERR");
+        return;
+    }
+    reply("DBG ch=%u(%s): press remote button within 1s...",
+          static_cast<unsigned>(receiver_.channel()),
+          receiver_.channel() == 4 ? "RF/PA4" : "IR/PA0");
 
     ADC1->CR2 |= ADC_CR2_CONT;
     HAL_ADC_Start(&hadc1);
@@ -322,9 +338,17 @@ void Cli::onDbg()
 // 用于区分：
 //   - 若打印出完整多帧 NEC(如 9000,-4500,562,-1687 ... 共 60~130 段) → 录制状态机被提前判结束(逻辑问题)
 //   - 若打印仍是 9000,-4500,562,-1,1,-1 ... 后信号消失 → 信号本身(或接收路径)在 ~14ms 后就没有边沿了(硬件/协议)
-void Cli::onRaw()
+void Cli::onRaw(uint8_t channel)
 {
-    reply("RAW: capturing 200ms, press & HOLD remote...");
+    // 0xFF 表示沿用当前通道；显式给定则先切通道（仅在变化时停 ADC 重配）
+    if (channel != 0xFF && !receiver_.selectChannel(channel))
+    {
+        reply("ERR");
+        return;
+    }
+    reply("RAW ch=%u(%s): capturing 3000ms, press & HOLD remote...",
+          static_cast<unsigned>(receiver_.channel()),
+          receiver_.channel() == 4 ? "RF/PA4" : "IR/PA0");
     signal_.clear();
 
     ADC1->CR2 |= ADC_CR2_CONT;
@@ -343,7 +367,7 @@ void Cli::onRaw()
 
     bool levelHigh = false;
     bool started   = false;
-    const uint32_t end = HAL_GetTick() + 200;
+    const uint32_t end = HAL_GetTick() + 3000;
     while (HAL_GetTick() < end)
     {
         HAL_ADC_PollForConversion(&hadc1, 1);

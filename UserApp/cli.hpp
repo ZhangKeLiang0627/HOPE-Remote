@@ -40,8 +40,8 @@ private:
     void onHelp();
     void onSlots();
     void onDump(uint16_t slot);  // 诊断：打印槽内全部段(带符号时长μs)
-    void onDbg();                // 诊断：1s 内 ADC 采样 min/max/avg/边沿数
-    void onRaw();                // 诊断：固定 200ms 窗口抓边沿(绕过空闲判定)并打印
+    void onDbg(uint8_t channel); // 诊断：1s 内 ADC 采样 min/max/avg/边沿数（0xFF=当前通道）
+    void onRaw(uint8_t channel); // 诊断：固定 3s 窗口抓边沿(绕过空闲判定)并打印（0xFF=当前通道）
     void printRaw(const Signal& sig, uint32_t len); // 带符号逗号分隔打印，末尾 len=段数
 
     Storage&       storage_;
