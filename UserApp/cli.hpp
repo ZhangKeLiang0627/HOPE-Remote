@@ -40,8 +40,17 @@ private:
     void onHelp();
     void onSlots();
     void onDump(uint16_t slot);  // 诊断：打印槽内全部段(带符号时长μs)
+    void onClr(uint16_t slot);   // 清除槽内数据（擦整扇区并重写兄弟槽）
     void onDbg(uint8_t channel); // 诊断：1s 内 ADC 采样 min/max/avg/边沿数（0xFF=当前通道）
     void onRaw(uint8_t channel); // 诊断：固定 3s 窗口抓边沿(绕过空闲判定)并打印（0xFF=当前通道）
+    void onAdcMon(uint8_t channel); // 诊断：ADC 长监听持续打印，'x' 退出（0xFF=当前通道）
+    void onAdcTest(uint8_t channel); // 诊断：原始 ADC 直读逐点打印，'x' 退出（0xFF=当前通道）
+    void onRfTest(); // 自测：PA2 驱动 T2L 发合成帧 + 同时采样 PA4 重建接收帧（空气回环）
+    void onRfCw();   // 自测：PA2 拉高 1.5s 连续载波，采样 PA4 统计（判 R1 是否收到/饱和）
+    void onRfKey();  // 自测：PA2 脉冲 30ms 触发 T2L(按键触发型)，全窗口抓 PA4 边沿验证是否爆发
+    void onRfAb();   // 自测：PA2 高 500ms + 低 500ms 各采样统计，判 T2L 是否跟随 PA2 开关
+    void onRfRec();  // 自测：载波开 200ms 后关，测 R1 从低电平恢复到噪声的时间(近距饱和恢复时间)
+    void onRfSlow(); // 自测：慢帧回环(码元 2000μs)——信号弱时 R1 只能跟长段，慢帧可证完整帧跟踪
     void printRaw(const Signal& sig, uint32_t len); // 带符号逗号分隔打印，末尾 len=段数
 
     Storage&       storage_;

@@ -60,3 +60,5 @@ MDK-ARM/HOPE-Remote
 MDK-ARM/HOPE-Remote.uvguix.*
 
 docs/superpowers
+# Build log
+MDK-ARM/BuildLog.txt
