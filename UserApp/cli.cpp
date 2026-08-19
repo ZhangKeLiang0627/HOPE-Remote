@@ -150,6 +150,17 @@ void Cli::dispatch()
     if (strcmp(cmd, "rfmon") == 0)   { onRfMon();   return; }
     if (strcmp(cmd, "rfloop") == 0)  { onRfLoop();  return; }
 
+    // rfscanNNN：发射槽 NNN 码的 8 种编码变体，供目标设备实测定位波形
+    if (lineLen_ == 9 && strncmp(cmd, "rfscan", 6) == 0)
+    {
+        const uint16_t slot = parseSlot(cmd + 6, 3);
+        if (RfStore::isValidSlot(slot))
+            onRfScan(slot);
+        else
+            reply("ERR");
+        return;
+    }
+
     // xxNNN / fsNNN / duNNN / clNNN：按槽号路由 IR/RF
     const bool twoChar =
         (cmd[0] == 'x' && cmd[1] == 'x') ||
@@ -261,11 +272,11 @@ void Cli::onLearn(uint16_t slot)
 }
 
 // RF 学习：消费 USART2 环形缓冲攒行 → 解析 "LC:xxxxxxxx" →
-// 连续 3 帧相同码通过去抖 → 帧间 500ms 无新帧 → 存槽。15s 总超时。
+// 连续 2 帧相同码即确认（参考 433_test_arduino 的两次相同确认），立即保存。
+// 15s 总超时兜底。
 void Cli::onLearnRf(uint16_t slot)
 {
-    constexpr uint8_t  kNeedMatch = 3;      // 连续相同帧数
-    constexpr uint32_t kFrameGapMs = 500;   // 帧间隔空闲阈值
+    constexpr uint8_t kNeedMatch = 2;   // 两帧相同即确认（按下瞬间即可学完）
 
     // 清掉残留帧与行缓冲，避免上次数据误判
     while (rfRingHead_ != rfRingTail_)
@@ -276,7 +287,6 @@ void Cli::onLearnRf(uint16_t slot)
     uint32_t lastCode = 0;
     uint8_t  matchCount = 0;
     bool     haveFirst = false;
-    uint32_t lastFrameTick = 0;
     uint8_t  lastHex = 0;              // 最近一次解析成功的 hex 位数
 
     for (;;)
@@ -313,7 +323,24 @@ void Cli::onLearnRf(uint16_t slot)
                             ++matchCount;
                         }
                         lastHex = nHex;
-                        lastFrameTick = HAL_GetTick();
+                        // 连续两帧相同 → 立即确认保存（不等空闲）
+                        if (matchCount >= kNeedMatch)
+                        {
+                            const uint32_t code24 = (lastHex == 8) ? ((lastCode >> 8) & 0xFFFFFFu)
+                                                                   : (lastCode & 0xFFFFFFu);
+                            CodeTraits::Payload p;
+                            p.pulseUs = kRfPulseUs;
+                            p.code24  = code24;
+                            if (!rfStore_.save(slot, p))
+                            {
+                                reply("REC %u FLASHERR", static_cast<unsigned>(slot));
+                                return;
+                            }
+                            reply("REC %u OK 0x%06lX pulse=%u", static_cast<unsigned>(slot),
+                                  static_cast<unsigned long>(code24),
+                                  static_cast<unsigned>(p.pulseUs));
+                            return;
+                        }
                     }
                     rfLineLen_ = 0;
                 }
@@ -322,24 +349,6 @@ void Cli::onLearnRf(uint16_t slot)
             {
                 rfLine_[rfLineLen_++] = c;
             }
-        }
-
-        if (haveFirst && matchCount >= kNeedMatch &&
-            HAL_GetTick() - lastFrameTick >= kFrameGapMs)
-        {
-            const uint32_t code24 = (lastHex == 8) ? ((lastCode >> 8) & 0xFFFFFFu)
-                                                   : (lastCode & 0xFFFFFFu);
-            CodeTraits::Payload p;
-            p.pulseUs = kRfPulseUs;
-            p.code24  = code24;
-            if (!rfStore_.save(slot, p))
-            {
-                reply("REC %u FLASHERR", static_cast<unsigned>(slot));
-                return;
-            }
-            reply("REC %u OK 0x%06lX pulse=%u", static_cast<unsigned>(slot),
-                  static_cast<unsigned long>(code24), static_cast<unsigned>(p.pulseUs));
-            return;
         }
     }
 }
@@ -392,6 +401,7 @@ void Cli::onHelp()
     reply("  raw    capture 3000ms IR raw signal & dump");
     reply("  rfmon  listen RF UART2 stream, x to stop");
     reply("  rfloop RF air loopback self-test (TX->RX compare)");
+    reply("  rfscanNNN emit 8 codec variants for target device test");
     reply("  evtest EV1527 encode->decode roundtrip self-test");
     reply("  help   show this");
 }
@@ -767,6 +777,81 @@ void Cli::onRfLoop()
               static_cast<unsigned long>(got), static_cast<unsigned long>(kExpect));
     else
         reply("RFLOOP FAIL no frame received (check TX/RX distance & wiring)");
+}
+
+// 自测：发射槽内码的 8 种编码变体，供目标设备（台灯等）实测定位正确波形。
+// 每个变体独立发射 10 帧，间隔足够，用户观察目标设备在哪一步响应。
+void Cli::onRfScan(uint16_t slot)
+{
+    CodeTraits::Payload p;
+    if (!rfStore_.load(slot, p))
+    {
+        reply("RFSCAN slot EMPTY");
+        return;
+    }
+    const uint32_t code  = p.code24;
+    const uint16_t pulse = p.pulseUs;
+
+    struct Variant
+    {
+        uint16_t syncMark;   // sync 载波 = N×pulse
+        uint16_t syncSpace;  // sync 空闲 = N×pulse
+        bool     shifted;    // 位移补偿 emit = code<<1
+        bool     lsbFirst;   // bit 低位先发
+    };
+    const Variant kVar[] = {
+        { 31,  1, false, false },   // 1: 31p+1p 原码（模块实测可收）
+        { 31,  1, true,  false },   // 2: 31p+1p 位移（当前 fs 行为）
+        {  1, 31, false, false },   // 3: 1p+31p 原码（RCSwitch 标准）
+        {  1, 31, true,  false },   // 4: 1p+31p 位移
+        {  4,124, false, false },   // 5: 4p+124p 原码（PT2262 标准）
+        {  4,124, true,  false },   // 6: 4p+124p 位移
+        { 31,  1, false, true  },   // 7: 31p+1p 原码 LSB-first
+        {  1, 31, false, true  },   // 8: 1p+31p 原码 LSB-first
+    };
+
+    reply("RFSCAN code=0x%06lX pulse=%u, 8 variants - watch target device",
+          static_cast<unsigned long>(code), static_cast<unsigned>(pulse));
+
+    for (uint8_t i = 0; i < sizeof(kVar) / sizeof(kVar[0]); ++i)
+    {
+        const uint32_t emit = kVar[i].shifted ? ((code & 0x7FFFFFu) << 1) : code;
+
+        Signal tx;
+        tx.clear();
+        tx.append(true, kVar[i].syncMark * pulse);
+        tx.append(false, kVar[i].syncSpace * pulse);
+        if (kVar[i].lsbFirst)
+        {
+            for (int b = 0; b < 24; ++b)
+            {
+                const bool one = (emit >> b) & 1;
+                tx.append(true, one ? 3 * pulse : pulse);
+                tx.append(false, one ? pulse : 3 * pulse);
+            }
+        }
+        else
+        {
+            for (int b = 23; b >= 0; --b)
+            {
+                const bool one = (emit >> b) & 1;
+                tx.append(true, one ? 3 * pulse : pulse);
+                tx.append(false, one ? pulse : 3 * pulse);
+            }
+        }
+
+        for (int r = 0; r < 10; ++r)
+        {
+            rfTransmitter_.play(tx);
+            HAL_Delay(30);
+        }
+        reply("#%u sync=%up+%up %s%s", static_cast<unsigned>(i + 1),
+              static_cast<unsigned>(kVar[i].syncMark),
+              static_cast<unsigned>(kVar[i].syncSpace),
+              kVar[i].shifted ? "shift" : "orig ",
+              kVar[i].lsbFirst ? " LSB" : "");
+    }
+    reply("RFSCAN done - which # toggled target?");
 }
 
 void Cli::reply(const char* fmt, ...)
