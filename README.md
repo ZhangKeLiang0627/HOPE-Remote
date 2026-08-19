@@ -42,12 +42,12 @@
 | `scNNN` | RF 槽直接编程 EV1527 码：`scNNN<hex6\|hex8>` |
 | `help` | 显示帮助 |
 
-调试命令（`rfmon`/`rfloop`/`rfraw`/`rfscan`/`rfscan2`/`evtest`/`dbg`/`raw`）见 [docs/rf-uart2-debug.md](docs/rf-uart2-debug.md)。
+调试命令（`rfmon`/`rfloop`/`rfscan`/`rfscan2`/`evtest`/`dbg`/`raw`）见 [docs/rf-uart2-debug.md](docs/rf-uart2-debug.md)。
 
 > **槽号格式**：`NNN` 支持 2-3 位。IR 槽 0-95；RF 槽 100-611（3 位）。96-99 为保留无效区。
 
 > **RF 学习**：按住原遥控按键，连续 2 帧相同码即确认保存（按下瞬间完成），15s 超时。
-> 码值取 hex 前 24 位（与 RCSwitch 约定一致）。
+> 码值取 hex 前 24 位（与 433_test_arduino/RCSwitch 约定一致）。
 
 > **RF 回放**：RCSwitch 标准时序（数据先行 24bit MSB + sync 收尾 1p+31p，pulse 320μs）。
 > 默认发射参数 **8 帧 × 1 簇 × 帧间隔 5ms × 簇间隔 300ms**（多盏灯实测通杀），

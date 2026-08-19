@@ -59,7 +59,6 @@ private:
     void onRaw();                        // 诊断：3s 窗口抓 IR 原始边沿并打印
     void onRfMon();                      // 诊断：监听 USART2 码流，'x' 退出
     void onRfLoop();                     // 自测：PA5 发已知码 → RfReceiver 回收比对
-    void onRfRaw();                      // 诊断：PA4 采样解调波形（抓真实遥控器）
     void onRfScan(uint16_t slot);        // 自测：15 种编码变体发射，目标设备实测定位
     void onRfScan2(uint16_t slot);       // 自测：sync-前置比例精扫 21 种，模块回收判 MATCH
     void printRaw(const Signal& sig, uint32_t len);

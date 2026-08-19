@@ -152,9 +152,8 @@ void Cli::dispatch()
     if (strcmp(cmd, "evtest") == 0)  { onEvTest();  return; }
     if (strcmp(cmd, "rfmon") == 0)   { onRfMon();   return; }
     if (strcmp(cmd, "rfloop") == 0)  { onRfLoop();  return; }
-    if (strcmp(cmd, "rfraw") == 0)   { onRfRaw();   return; }
 
-    // rfscan2NNN：sync-前置比例精扫（mark 28~40p × space 1~3p），模块回收自动判 MATCH
+    // rfscan2NNN：sync-前置比例精扫（mark 28-40p × space 1-3p），模块回收自动判 MATCH
     if (lineLen_ == 10 && strncmp(cmd, "rfscan2", 7) == 0)
     {
         const uint16_t slot = parseSlot(cmd + 7, 3);
@@ -310,7 +309,7 @@ void Cli::onLearn(uint16_t slot)
 
     // ---- IR 路径（HS0038）：首边沿即录，空闲 100ms 判定结束 ----
     const uint32_t t0 = HAL_GetTick();
-    irReceiver_.start(signal_, 0);   // IR=ADC1_CH0(PA0)
+    irReceiver_.start(signal_);   // IR=ADC1_CH0(PA0)
 
     CaptureState st;
     do
@@ -461,7 +460,6 @@ void Cli::onHelp()
     reply("  raw    capture 3000ms IR raw signal & dump");
     reply("  rfmon  listen RF UART2 stream, x to stop");
     reply("  rfloop RF air loopback self-test (TX->RX compare)");
-    reply("  rfraw  sample PA4 RF demod waveform (capture real remote)");
     reply("  rfscanNNN emit 15 codec variants for target device test");
     reply("  rfscan2NNN sync-FIRST ratio scan 21 variants (module match)");
     reply("  evtest EV1527 encode->decode roundtrip self-test");
@@ -606,7 +604,6 @@ void Cli::printRaw(const Signal& sig, uint32_t len)
 // 诊断：连续采样 ADC 1s 统计（IR/PA0）。期间按红外遥控器按键可看电平特征。
 void Cli::onDbg()
 {
-    irReceiver_.selectChannel(0);
     reply("DBG ch=0(IR/PA0): press IR remote button within 1s...");
 
     ADC1->CR2 &= ~ADC_CR2_CONT;
@@ -637,7 +634,6 @@ void Cli::onDbg()
 // 诊断：固定 3000ms 窗口抓 IR 原始边沿（HS0038 空闲=高）。
 void Cli::onRaw()
 {
-    irReceiver_.selectChannel(0);
     reply("RAW ch=0(IR/PA0): capturing 3000ms, press & HOLD IR remote...");
     signal_.clear();
 
@@ -764,65 +760,6 @@ void Cli::onRfLoop()
               static_cast<unsigned long>(got));
     else
         reply("RFLOOP no rx (normal: module rejects standard sync; verify via target device)");
-}
-
-// 诊断：PA4 波形采样（解调 DATA 输入）。用于抓取真实遥控器的空中波形，
-// 分析 sync/bit 结构后精确复刻。PA4 需接串口模块的 DATA 解调输出（若有）。
-void Cli::onRfRaw()
-{
-    if (!irReceiver_.selectChannel(4))
-    {
-        reply("ERR");
-        return;
-    }
-    reply("RFRAW ch=4(PA4): capturing 3000ms, press & HOLD RF remote...");
-    signal_.clear();
-
-    ADC1->CR2 &= ~ADC_CR2_CONT;
-    ADC1->CR2 |= ADC_CR2_CONT;          // RF 解调输出走连续模式（旧方案经验）
-    HAL_ADC_Start(&hadc1);
-
-    uint32_t sum = 0;
-    uint16_t prev = 0;
-    for (int i = 0; i < 8; ++i)
-    {
-        prev = irReceiver_.readAdc();
-        sum += prev;
-    }
-    prev = static_cast<uint16_t>(sum / 8);
-    const bool idleLevel = (prev > 2048);   // 空闲电平自适应（高或低）
-
-    bool levelHigh = false;
-    bool started   = false;
-    const uint32_t end = HAL_GetTick() + 3000;
-    while (HAL_GetTick() < end)
-    {
-        const uint16_t v = irReceiver_.readAdc();
-        const uint16_t d = (v > prev) ? (v - prev) : (prev - v);
-        if (d > IrReceiver::kEdgeThreshold)
-        {
-            if (!started)
-            {
-                started = true;
-                levelHigh = (v > prev);
-                __HAL_TIM_SET_COUNTER(&htim2, 0);
-            }
-            else
-            {
-                const uint32_t duration = __HAL_TIM_GET_COUNTER(&htim2);
-                if (!signal_.append(levelHigh != idleLevel, duration))
-                    break;
-                __HAL_TIM_SET_COUNTER(&htim2, 0);
-                levelHigh = (v > prev);
-            }
-        }
-        prev = v;
-    }
-    HAL_ADC_Stop(&hadc1);
-
-    const uint32_t len = signal_.length();
-    reply("RFRAW %u seg:", static_cast<unsigned>(len));
-    printRaw(signal_, len);
 }
 
 // 自测：sync-前置比例精扫。模块对 sync-FIRST 31p+1p 解出偏移码
