@@ -235,10 +235,10 @@ void Cli::dispatch()
             reply("ERR");
             return;
         }
-        if (cmd[2] == 's')      onSend(slot, 0, 3, 2, 30, 300);   // 短按：2簇×3帧
-        else if (cmd[2] == 'l') onSend(slot, 0, 15, 3, 30, 300);  // 长按：3簇×15帧
-        else if (cmd[2] == 'a') onSend(slot, 0, 8, 3, 30, 300);   // 兼容旧 fsa
-        else                    onSend(slot, 2, 8, 3, 30, 300);   // fsb：长载波 sync
+        if (cmd[2] == 's')      onSend(slot, 0, 3, 1, 5, 300);    // fss：3帧×1簇（短按）
+        else if (cmd[2] == 'l') onSend(slot, 0, 15, 1, 5, 300);   // fsl：15帧×1簇（长按）
+        else if (cmd[2] == 'a') onSend(slot, 0, 8, 1, 5, 300);    // 兼容旧 fsa
+        else                    onSend(slot, 2, 8, 1, 5, 300);    // fsb：长载波 sync
         return;
     }
 
@@ -267,7 +267,7 @@ void Cli::dispatch()
             reply("ERR");
             return;
         }
-        uint32_t f = 8, b = 3, g = 30, bg = 300;
+        uint32_t f = 8, b = 1, g = 5, bg = 300;   // 默认：8帧×1簇，帧间隔5ms，簇间隔300ms（三灯实测通杀）
         if (*p == ' ')
         {
             uint32_t v;
@@ -519,8 +519,8 @@ void Cli::onHelp()
 {
     reply("HOPE-Remote commands:");
     reply("  xxNNN  learn remote (000-095 IR, 100-611 RF)");
-    reply("  fsNNN  play RF slot [f b g bg] (default 8x3, gap 30/300ms)");
-    reply("         e.g. fs103 1 1 = single frame; fs103 5 3 40 400");
+    reply("  fsNNN  play RF slot [f b g bg] (default 8x1, gap 5/300ms)");
+    reply("         e.g. fs103 1 1 = single frame; fs103 8 1 5 300");
     reply("  fssNNN RF short-press (2 bursts x 3 frames)");
     reply("  fslNNN RF long-press (3 bursts x 15 frames)");
     reply("  fsbNNN RF long-carrier sync variant (debug)");
