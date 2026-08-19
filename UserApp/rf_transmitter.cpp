@@ -27,22 +27,22 @@ void RfTransmitter::play(const Signal& sig)
 
 // ---- EV1527 编解码 ----
 // 实测结论（灵-R1A 串口版，2026-08-19 板端验证）：
-//   · 模块只认「长载波 sync」：sync = mark 31×pulse + space 1×pulse
-//     （标准 RCSwitch 的 1p+31p sync 模块收不到帧，pulse 320~900μs 均无效）
-//   · 模块解码存在固定偏移：got = 0x800000 | (emit >> 1)
-//     —— 回放时必须发射 位移补偿码 emit = code24 << 1，模块/目标设备才能解出 code24
+//   · 正确帧结构 = 数据位先行 + sync 收尾（RCSwitch 风格，参考项目 ESP433RF 实际时序）：
+//        [24bit 数据 MSB first][sync: mark 31×pulse + space 1×pulse]
+//     即 sync 在帧尾，且用长载波比例（1p+31p 的 sync 模块收不到）
+//   · 回放用原码（code24），无需位移补偿——位移补偿是 sync-first 时序下的错误推导
 //   · bit 编码：bit0 = mark 1×pulse + space 3×pulse；bit1 = mark 3×pulse + space 1×pulse
-//   · pulse 320μs，MSB 先发
+//   · pulse 320μs
 
 // 内部实现：inv=false 按「载波=mark(+)」解；inv=true 按反相（载波=space）解。
 // 接收模块输出极性任意，公共 ev1527Decode 先试正向、失败再反相，做到极性无关。
 static bool ev1527DecodePol(const Signal& sig, bool inv, uint32_t& code24, uint16_t& pulseUs)
 {
     const uint32_t n = sig.length();
-    if (n < 6)
+    if (n < 8)
         return false;
 
-    // 1) sync = 最长载波段（≈31×pulse 长载波，远大于 bit1 的 3×pulse）
+    // 1) sync = 最长载波段（帧尾 31×pulse 长载波，远大于 bit1 的 3×pulse）
     uint32_t syncIdx = 0, syncUs = 0;
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -62,11 +62,12 @@ static bool ev1527DecodePol(const Signal& sig, bool inv, uint32_t& code24, uint1
     if (pulse < 150 || pulse > 1500)
         return false;
 
-    // 3) 长载波 + sync space 之后连续 24 个 (mark,space) bit 对，按 mark/space 长短判 0/1
+    // 3) 数据位在 sync 之前：帧 = [b23..b0][sync mark][sync space]，
+    //    从帧头起连续 24 个 (mark,space) bit 对，按 mark/space 长短判 0/1
     uint32_t code = 0;
     for (uint32_t b = 0; b < 24; ++b)
     {
-        const uint32_t mi = syncIdx + 2 + b * 2;   // 跳过 sync space(1×pulse)
+        const uint32_t mi = b * 2;       // MSB first：index 0 是 bit23
         if (mi + 1 >= n)
             return false;
         const bool ml = inv ? !sig.level(sig.at(mi))     : sig.level(sig.at(mi));
@@ -99,13 +100,12 @@ void ev1527Encode(Signal& out, uint32_t code24, uint16_t pulseUs)
 {
     const uint32_t p = pulseUs;
     out.clear();
-    out.append(true, 31 * p);            // sync mark：长载波（模块实测唯一可收的 sync）
-    out.append(false, 1 * p);            // sync space
-    for (int b = 23; b >= 0; --b)        // MSB 先发
+    for (int b = 23; b >= 0; --b)        // MSB 先发，数据位先行
     {
         const bool one = (code24 >> b) & 1;
         out.append(true, one ? 3 * p : 1 * p);
         out.append(false, one ? 1 * p : 3 * p);
     }
-    // 帧尾 space 不入帧：RfTransmitter::play 播完自动拉低
+    out.append(true, 31 * p);            // sync mark：帧尾长载波（模块实测唯一可收）
+    out.append(false, 1 * p);            // sync space
 }

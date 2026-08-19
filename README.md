@@ -55,19 +55,20 @@
 > 即通过去抖，帧间 500ms 无新帧自动保存，15s 无有效帧超时。
 > 码值取 hex 前 24 位（hex8 约定与 433_test_arduino/RCSwitch 一致）。
 
-> **RF 回放（位移补偿）**：串口模块实测解码规则为 `got = 0x800000 | (emit >> 1)`
-> （模块只认长载波 sync：31×pulse 载波 + 1×pulse 空闲；标准 RCSwitch 的 1p+31p sync
-> 模块收不到）。故回放 `fsNNN` 发射 **位移补偿码 `emit = code24 << 1`**，目标设备
-> （与模块同族）才能解出学习到的 code24。脉宽 320μs。
+> **RF 回放（sync 收尾时序）**：实测确定正确帧结构 = **数据位先行 + sync 收尾**
+> （RCSwitch 风格）：`[24bit 数据 MSB first][sync: 31×pulse 载波 + 1×pulse 空闲]`。
+> - sync 在**帧尾**（参考项目 ESP433RF 实际时序），且用长载波比例（1p+31p sync 模块收不到）
+> - 回放用**原码**（无需位移补偿——位移补偿是 sync 前置时序下的错误推导）
+> - bit：0 = 1p 载波 + 3p 空闲；1 = 3p 载波 + 1p 空闲；pulse 320μs；8 帧重复
 
 ## RF 回环自测（rfloop）
 
-无需遥控器，全自动验证 RF 全链路：
+无需遥控器，全自动验证 RF 全链路与波形正确性：
 
 ```
-rfloop → PA5 驱动远-T2L 发 位移补偿码 0x55C311<<1 = 0xAB8622（sync 31p+1p，8 帧）
+rfloop → PA5 驱动远-T2L 发 0x55C311（sync 收尾时序，8 帧）
       → 灵-R1A 串口版空中收到 → USART2 回传 LC: 帧
-      → MCU 解析比对 → got == 0xD5C311（= 0x800000|0x55C311）即 PASS
+      → MCU 解析比对 → got == 0x55C311 即 [TARGET MATCH] PASS
 ```
 
 发射与接收模块建议拉开 1~3m（近距可能饱和收不到）。
