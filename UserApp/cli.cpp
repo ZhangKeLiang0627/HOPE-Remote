@@ -65,42 +65,27 @@ namespace
     }
 
     // RF 回放编码变体：
-    //   0 = 标准 EV1527（sync 前置 1p+31p + LSB 低位先发，默认 fs）——实测可控制灯
-    //   1 = RCSwitch 风格（sync 收尾 1p+31p + MSB，fsa）
-    //   2 = 长载波 sync 前置（31p+1p + LSB，fsb）
+    //   0 = RCSwitch 标准（sync 收尾 1p+31p + MSB，实测可控制灯，默认）
+    //   2 = 长载波 sync 收尾（31p+1p + MSB，fsb 调试用）
     void encodeRfVariant(Signal& out, uint32_t code, uint16_t pulse, uint8_t variant)
     {
         const uint32_t p = pulse;
         out.clear();
-        if (variant == 1)
+        for (int b = 23; b >= 0; --b)        // MSB first，数据先行
         {
-            for (int b = 23; b >= 0; --b)
-            {
-                const bool one = (code >> b) & 1;
-                out.append(true, one ? 3 * p : 1 * p);
-                out.append(false, one ? 1 * p : 3 * p);
-            }
-            out.append(true, 1 * p);
-            out.append(false, 31 * p);
+            const bool one = (code >> b) & 1;
+            out.append(true, one ? 3 * p : 1 * p);
+            out.append(false, one ? 1 * p : 3 * p);
+        }
+        if (variant == 2)
+        {
+            out.append(true, 31 * p);        // 长载波 sync（模块偏好，目标设备不认）
+            out.append(false, 1 * p);
         }
         else
         {
-            if (variant == 2)
-            {
-                out.append(true, 31 * p);
-                out.append(false, 1 * p);
-            }
-            else
-            {
-                out.append(true, 1 * p);
-                out.append(false, 31 * p);
-            }
-            for (int b = 0; b < 24; ++b)
-            {
-                const bool one = (code >> b) & 1;
-                out.append(true, one ? 3 * p : 1 * p);
-                out.append(false, one ? 1 * p : 3 * p);
-            }
+            out.append(true, 1 * p);         // RCSwitch 标准 sync
+            out.append(false, 31 * p);
         }
     }
 }
@@ -213,10 +198,10 @@ void Cli::dispatch()
         return;
     }
 
-    // fsaNNN / fsbNNN：RF 回放编码变体——必须在 fsNNN 通配分支之前，
-    // 否则 "fsb103"(6字符) 会被 fsNNN 匹配，parseSlot("b103") 失败返回 ERR。
+    // fsxNNN 系列（6 字符：fss 短按 / fsl 长按 / fsa 兼容 / fsb 调试）
+    // ——必须在 fsNNN 通配分支之前，否则 "fss103" 会被 fsNNN 匹配导致解析失败
     if (lineLen_ == 6 && cmd[0] == 'f' && cmd[1] == 's' &&
-        (cmd[2] == 'a' || cmd[2] == 'b'))
+        (cmd[2] == 's' || cmd[2] == 'l' || cmd[2] == 'a' || cmd[2] == 'b'))
     {
         const uint16_t slot = parseSlot(cmd + 3, 3);
         if (!RfStore::isValidSlot(slot))
@@ -224,7 +209,10 @@ void Cli::dispatch()
             reply("ERR");
             return;
         }
-        onSend(slot, cmd[2] == 'a' ? 1 : 2);
+        if (cmd[2] == 's')      onSend(slot, 0, 3);    // 短按模拟：3 帧
+        else if (cmd[2] == 'l') onSend(slot, 0, 15);   // 长按模拟：15 帧
+        else if (cmd[2] == 'a') onSend(slot, 0, 8);    // 兼容旧 fsa（现与 fs 同）
+        else                    onSend(slot, 2, 8);    // fsb：长载波 sync 调试
         return;
     }
 
@@ -243,7 +231,7 @@ void Cli::dispatch()
             return;
         }
         if (cmd[0] == 'x' && cmd[1] == 'x') onLearn(slot);
-        else if (cmd[0] == 'f' && cmd[1] == 's') onSend(slot, 0);
+        else if (cmd[0] == 'f' && cmd[1] == 's') onSend(slot, 0, 8);   // RCSwitch 标准 8 帧
         else if (cmd[0] == 'd' && cmd[1] == 'u') onDump(slot);
         else onClr(slot);
         return;
@@ -420,7 +408,7 @@ void Cli::onLearnRf(uint16_t slot)
     }
 }
 
-void Cli::onSend(uint16_t slot, uint8_t variant)
+void Cli::onSend(uint16_t slot, uint8_t variant, uint8_t frames)
 {
     if (IrStore::isValidSlot(slot))
     {
@@ -434,7 +422,7 @@ void Cli::onSend(uint16_t slot, uint8_t variant)
         return;
     }
 
-    // RF：读码值 → 按变体编码 → PA5 直驱，重复 N 帧模拟真实遥控
+    // RF：读码值 → 编码 → PA5 直驱，重复 frames 帧（帧间隔 10ms）
     CodeTraits::Payload p;
     if (!rfStore_.load(slot, p))
     {
@@ -442,23 +430,24 @@ void Cli::onSend(uint16_t slot, uint8_t variant)
         return;
     }
     encodeRfVariant(signal_, p.code24, p.pulseUs, variant);
-    constexpr int kRfRepeats = 8;
-    for (int r = 0; r < kRfRepeats; ++r)
+    for (uint8_t r = 0; r < frames; ++r)
     {
         rfTransmitter_.play(signal_);
-        if (r + 1 < kRfRepeats)
-            HAL_Delay(10);                      // 帧间隔 ~10ms
+        if (r + 1 < frames)
+            HAL_Delay(10);                      // 帧间隔 ~10ms（RCSwitch 默认）
     }
-    reply("FS %u OK (v%u)", static_cast<unsigned>(slot), static_cast<unsigned>(variant));
+    reply("FS %u OK (v%u x%u)", static_cast<unsigned>(slot),
+          static_cast<unsigned>(variant), static_cast<unsigned>(frames));
 }
 
 void Cli::onHelp()
 {
     reply("HOPE-Remote commands:");
     reply("  xxNNN  learn remote (000-095 IR, 100-611 RF)");
-    reply("  fsNNN  play slot");
-    reply("  fsaNNN RF play variant #9 (sync-last 1p+31p MSB)");
-    reply("  fsbNNN RF play variant #7 (sync-first 31p+1p LSB)");
+    reply("  fsNNN  play RF slot (RCSwitch std, 8 frames)");
+    reply("  fssNNN RF short-press (3 frames, for picky lamps)");
+    reply("  fslNNN RF long-press (15 frames)");
+    reply("  fsbNNN RF long-carrier sync variant (debug)");
     reply("  slots  list slot occupancy");
     reply("  duNNN  dump slot (IR segments / RF code)");
     reply("  clNNN  clear slot data");
