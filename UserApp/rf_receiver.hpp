@@ -6,7 +6,7 @@
 #include "usart.h"
 
 // RF 串口帧接收器：接收 433 串口解码模块（灵-R1A 串口版）输出的
-// "LC:xxxxxxxx" 帧。与 IR 的 Receiver（ADC 边沿状态机）职责对仗。
+// "LC:xxxxxxxx" 帧。与 IR 的 IrReceiver（ADC 边沿状态机）职责对仗。
 //
 // 数据流：USART2 中断 → 环形缓冲（静态，回调无对象上下文）
 //       → poll() 每调用至多处理一行：解析出 Frame 或暂存原始行

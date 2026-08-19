@@ -31,7 +31,7 @@
 class Cli
 {
 public:
-    Cli(IrStore& ir, RfStore& rf, RfReceiver& rfRx, Signal& sig, Receiver& rx,
+    Cli(IrStore& ir, RfStore& rf, RfReceiver& rfRx, Signal& sig, IrReceiver& rx,
         IrTransmitter& irTx, RfTransmitter& rfTx);
 
     // 清环形缓冲并启动 USART1/USART2 单字节中断接收。

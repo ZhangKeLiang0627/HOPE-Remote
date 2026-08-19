@@ -97,7 +97,7 @@ extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart)
     }
 }
 
-Cli::Cli(IrStore& ir, RfStore& rf, RfReceiver& rfRx, Signal& sig, Receiver& rx,
+Cli::Cli(IrStore& ir, RfStore& rf, RfReceiver& rfRx, Signal& sig, IrReceiver& rx,
          IrTransmitter& irTx, RfTransmitter& rfTx)
     : irStore_(ir), rfStore_(rf), rfReceiver_(rfRx), signal_(sig), irReceiver_(rx),
       irTransmitter_(irTx), rfTransmitter_(rfTx)
