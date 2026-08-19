@@ -55,11 +55,12 @@
 > 即通过去抖，帧间 500ms 无新帧自动保存，15s 无有效帧超时。
 > 码值取 hex 前 24 位（hex8 约定与 433_test_arduino/RCSwitch 一致）。
 
-> **RF 回放（sync 收尾时序）**：实测确定正确帧结构 = **数据位先行 + sync 收尾**
-> （RCSwitch 风格）：`[24bit 数据 MSB first][sync: 31×pulse 载波 + 1×pulse 空闲]`。
-> - sync 在**帧尾**（参考项目 ESP433RF 实际时序），且用长载波比例（1p+31p sync 模块收不到）
-> - 回放用**原码**（无需位移补偿——位移补偿是 sync 前置时序下的错误推导）
-> - bit：0 = 1p 载波 + 3p 空闲；1 = 3p 载波 + 1p 空闲；pulse 320μs；8 帧重复
+> **RF 回放（RCSwitch 标准时序）**：实测确定正确帧结构 = **数据位先行 + sync 收尾**：
+> `[24bit 数据 MSB first][sync: 1×pulse 载波 + 31×pulse 空闲]`（RCSwitch protocol 1，
+> 与参考项目 ESP433RF 一致），回放用原码，pulse 320μs。
+> - ⚠️ 串口模块只认长载波 sync（31p+1p），对标准 1p+31p 收不到帧——**模块回环不能验证回放正确性**，以目标设备实测为准
+> - 发射策略：帧间隔 **30ms**（间隔过短会使相邻帧"粘连"导致个别帧解调失败），
+>   `fsNNN`=8 帧 ≈ 类长按 400ms；`fssNNN`=3 帧 ≈ 短按 150ms；`fslNNN`=15 帧 ≈ 长按 750ms
 
 ## RF 回环自测（rfloop）
 

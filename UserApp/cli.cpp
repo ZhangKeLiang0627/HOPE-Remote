@@ -44,6 +44,11 @@ namespace
     // RF 回放脉宽（跟随 433_test_arduino 实测：RCSwitch protocol 1）
     constexpr uint16_t kRfPulseUs = 320;
 
+    // RF 回放帧间隔：接收端靠帧尾长空闲(31p≈10ms)判定帧结束，
+    // 间隔 10ms 时相邻帧"粘连"导致个别帧解调失败（实测灯时好时坏），
+    // 原装遥控器典型帧间隔 20~40ms，取 30ms。
+    constexpr uint16_t kRfFrameGapMs = 30;
+
     bool validSlot(uint16_t slot)
     {
         return IrStore::isValidSlot(slot) || RfStore::isValidSlot(slot);
@@ -434,7 +439,7 @@ void Cli::onSend(uint16_t slot, uint8_t variant, uint8_t frames)
     {
         rfTransmitter_.play(signal_);
         if (r + 1 < frames)
-            HAL_Delay(10);                      // 帧间隔 ~10ms（RCSwitch 默认）
+            HAL_Delay(kRfFrameGapMs);           // 帧间隔（防相邻帧粘连）
     }
     reply("FS %u OK (v%u x%u)", static_cast<unsigned>(slot),
           static_cast<unsigned>(variant), static_cast<unsigned>(frames));
@@ -789,7 +794,7 @@ void Cli::onRfLoop()
     {
         rfTransmitter_.play(tx);
         if (r + 1 < kRepeats)
-            HAL_Delay(10);
+            HAL_Delay(kRfFrameGapMs);
     }
 
     uint32_t got = 0;
