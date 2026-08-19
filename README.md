@@ -6,10 +6,9 @@
 
 - IR 遥控码学习与回放，槽 0~95 × 2KB Flash 存储（波形）
 - 433MHz RF 遥控码学习与回放，槽 100~611 × 8B Flash 存储（码值）
-- RF 学习走串口解码模块：灵-R1A-M5（串口版）→ USART2 @ 9600，输出 `LC:xxxxxxxx` 帧
-- RF 回放走 PA5 直驱发射模块（远-T2L 类，DATA 基带电平）
+- RF 学习走串口解码模块（灵-R1A 串口版 → USART2 @ 9600，输出 `LC:xxxxxxxx`）
+- RF 回放走 PA5 直驱发射模块（远-T2L，DATA 基带电平）
 - 串口 CLI 调试（USART1 @ 115200）
-- `rfloop` 空气回环自测（发射已知码 → 串口回收比对）
 
 ## 槽位布局
 
@@ -36,45 +35,23 @@
 | 命令 | 说明 |
 |---|---|
 | `xxNNN` | 学习遥控码到槽（000-095 IR，100-611 RF） |
-| `fsNNN` | 播放槽 |
+| `fsNNN` | 播放槽（RF 支持发射参数，见下） |
 | `slots` | 列出槽占用情况 |
 | `duNNN` | 打印槽内容（IR 段时长 / RF 码值） |
 | `clNNN` | 清除槽数据 |
 | `scNNN` | RF 槽直接编程 EV1527 码：`scNNN<hex6\|hex8>` |
-| `dbg` | IR ADC 采样 1s：min/max/avg/edges（调试） |
-| `raw` | 捕获 3000ms IR 原始波形并打印（调试） |
-| `rfmon` | 监听 USART2 RF 码流，x 退出（调试） |
-| `rfloop` | RF 空气回环链路自测（标准时序发射 → 模块回收） |
-| `evtest` | EV1527 编解码往返自测 |
 | `help` | 显示帮助 |
 
-> **槽号格式**：`NNN` 支持 2~3 位。IR 槽 0~95（`xx00`/`xx000` 均可）；RF 槽 100~611（3 位）。
-> 槽号 96~99 为保留无效区，1 位槽号同样返回 `ERR`。
+调试命令（`rfmon`/`rfloop`/`rfraw`/`rfscan`/`rfscan2`/`evtest`/`dbg`/`raw`）见 [docs/rf-uart2-debug.md](docs/rf-uart2-debug.md)。
 
-> **RF 学习**：`xxNNN`（RF 槽）→ 按住原遥控按键，**连续 2 帧相同码即确认保存**（按下瞬间完成），
-> 15s 无有效帧超时。码值取 hex 前 24 位（hex8 约定与 433_test_arduino/RCSwitch 一致）。
+> **槽号格式**：`NNN` 支持 2~3 位。IR 槽 0~95；RF 槽 100~611（3 位）。96~99 为保留无效区。
 
-> **RF 回放（RCSwitch 标准时序）**：实测确定正确帧结构 = **数据位先行 + sync 收尾**：
-> `[24bit 数据 MSB first][sync: 1×pulse 载波 + 31×pulse 空闲]`（RCSwitch protocol 1，
-> 与参考项目 ESP433RF 一致），回放用原码，pulse 320μs。
-> - ⚠️ 串口模块只认长载波 sync（31p+1p），对标准 1p+31p 收不到帧——**模块回环不能验证回放正确性**，以目标设备实测为准
-> - 发射策略（三盏灯实测通杀）：**8 帧 × 1 簇 × 帧间隔 5ms × 簇间隔 300ms**，
->   `fsNNN` 支持可选参数 `[帧数 簇数 帧间隔ms 簇间隔ms]` 覆盖默认值
->   （如 `fs103 1 1` 单帧、`fs103 8 1 5 300` 显式指定）
-> - `fssNNN`=3 帧（短按）、`fslNNN`=15 帧（长按）、`fsbNNN`=长载波 sync（调试）
+> **RF 学习**：按住原遥控按键，连续 2 帧相同码即确认保存（按下瞬间完成），15s 超时。
+> 码值取 hex 前 24 位（与 433_test_arduino/RCSwitch 约定一致）。
 
-## RF 回环自测（rfloop）
-
-无需遥控器，验证发射链路是否工作：
-
-```
-rfloop → PA5 驱动远-T2L 发 0x55C311（标准时序，8 帧）
-      → 灵-R1A 串口版空中收到 → USART2 回传 LC: 帧
-      → 解析比对 → got == 0x55C311 即 PASS
-```
-
-> ⚠️ 模块对标准 1p+31p sync 收不到帧（模块只认长载波 sync），`no rx` 属**正常**，
-> 不代表发射失败——**回放正确性以目标设备实测为准**（`fsNNN` 三灯实测通过）。
+> **RF 回放**：RCSwitch 标准时序（数据先行 24bit MSB + sync 收尾 1p+31p，pulse 320μs）。
+> 默认发射参数 **8 帧 × 1 簇 × 帧间隔 5ms × 簇间隔 300ms**（多盏灯实测通杀），
+> 可用 `fsNNN [帧数 簇数 帧间隔ms 簇间隔ms]` 覆盖（如 `fs103 1 1` 单帧、`fs103 8 1 5 300` 显式指定）。
 
 ## 目录结构
 
@@ -83,6 +60,7 @@ rfloop → PA5 驱动远-T2L 发 0x55C311（标准时序，8 帧）
 - `Core/` — CubeMX 生成代码（引脚初始化由 CubeMX 配置生成）
 - `Drivers/` — HAL 驱动
 - `MDK-ARM/` — Keil 工程
+- `docs/` — 调试与测试手册
 
 ## 构建
 
