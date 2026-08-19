@@ -44,7 +44,7 @@
 
 调试命令（`rfmon`/`rfloop`/`rfraw`/`rfscan`/`rfscan2`/`evtest`/`dbg`/`raw`）见 [docs/rf-uart2-debug.md](docs/rf-uart2-debug.md)。
 
-> **槽号格式**：`NNN` 支持 2~3 位。IR 槽 0~95；RF 槽 100~611（3 位）。96~99 为保留无效区。
+> **槽号格式**：`NNN` 支持 2-3 位。IR 槽 0-95；RF 槽 100-611（3 位）。96-99 为保留无效区。
 
 > **RF 学习**：按住原遥控按键，连续 2 帧相同码即确认保存（按下瞬间完成），15s 超时。
 > 码值取 hex 前 24 位（与 433_test_arduino/RCSwitch 约定一致）。
