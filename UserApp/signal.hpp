@@ -15,7 +15,7 @@
 class Signal
 {
 public:
-    static constexpr uint32_t kMaxSegments = 510;     // 2KB 槽 / 4B（与 Storage::kMaxSegsPerSlot 对齐）
+    static constexpr uint32_t kMaxSegments = 510;     // 2KB 槽 / 4B（与 WaveTraits::kMaxPayload 对齐）
     static constexpr uint32_t kMaxSegUs    = 0x7FFFFFFF; // bit30:0 上限
 
     void clear() { len_ = 0; }
