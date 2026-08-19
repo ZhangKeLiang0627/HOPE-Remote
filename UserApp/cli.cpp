@@ -213,6 +213,21 @@ void Cli::dispatch()
         return;
     }
 
+    // fsaNNN / fsbNNN：RF 回放编码变体——必须在 fsNNN 通配分支之前，
+    // 否则 "fsb103"(6字符) 会被 fsNNN 匹配，parseSlot("b103") 失败返回 ERR。
+    if (lineLen_ == 6 && cmd[0] == 'f' && cmd[1] == 's' &&
+        (cmd[2] == 'a' || cmd[2] == 'b'))
+    {
+        const uint16_t slot = parseSlot(cmd + 3, 3);
+        if (!RfStore::isValidSlot(slot))
+        {
+            reply("ERR");
+            return;
+        }
+        onSend(slot, cmd[2] == 'a' ? 1 : 2);
+        return;
+    }
+
     // xxNNN / fsNNN / duNNN / clNNN：按槽号路由 IR/RF
     const bool twoChar =
         (cmd[0] == 'x' && cmd[1] == 'x') ||
@@ -231,20 +246,6 @@ void Cli::dispatch()
         else if (cmd[0] == 'f' && cmd[1] == 's') onSend(slot, 0);
         else if (cmd[0] == 'd' && cmd[1] == 'u') onDump(slot);
         else onClr(slot);
-        return;
-    }
-
-    // fsaNNN / fsbNNN：RF 回放编码变体（fsa=#9 sync收尾1p+31p MSB；fsb=#7 sync前置31p+1p LSB）
-    if (lineLen_ == 6 && cmd[0] == 'f' && cmd[1] == 's' &&
-        (cmd[2] == 'a' || cmd[2] == 'b'))
-    {
-        const uint16_t slot = parseSlot(cmd + 3, 3);
-        if (!RfStore::isValidSlot(slot))
-        {
-            reply("ERR");
-            return;
-        }
-        onSend(slot, cmd[2] == 'a' ? 1 : 2);
         return;
     }
 
