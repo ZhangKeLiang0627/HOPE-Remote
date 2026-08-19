@@ -46,7 +46,7 @@ private:
     void dispatch();
     void onLearn(uint16_t slot);
     void onLearnRf(uint16_t slot);      // RF 学习：USART2 收 LC:hex，连续 2 帧去抖
-    void onSend(uint16_t slot, uint8_t variant, uint8_t frames);  // v:0=RCSwitch标准 2=长载波
+    void onSend(uint16_t slot, uint8_t variant, uint8_t framesPerBurst, uint8_t bursts);  // v:0=RCSwitch标准 2=长载波
     void onHelp();
     void onSlots();
     void onDump(uint16_t slot);

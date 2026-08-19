@@ -49,6 +49,11 @@ namespace
     // 原装遥控器典型帧间隔 20~40ms，取 30ms。
     constexpr uint16_t kRfFrameGapMs = 30;
 
+    // RF 回放簇间隔：目标设备（灯）接收端常为低功耗轮询模式，第一簇仅用于
+    // "唤醒"，第二簇才完整收到 → 单簇发射经常无反应（实测需"连点"）。
+    // 固件自动多簇连发（簇间隔 300ms，模拟快速连按）。
+    constexpr uint16_t kRfBurstGapMs = 300;
+
     bool validSlot(uint16_t slot)
     {
         return IrStore::isValidSlot(slot) || RfStore::isValidSlot(slot);
@@ -214,10 +219,10 @@ void Cli::dispatch()
             reply("ERR");
             return;
         }
-        if (cmd[2] == 's')      onSend(slot, 0, 3);    // 短按模拟：3 帧
-        else if (cmd[2] == 'l') onSend(slot, 0, 15);   // 长按模拟：15 帧
-        else if (cmd[2] == 'a') onSend(slot, 0, 8);    // 兼容旧 fsa（现与 fs 同）
-        else                    onSend(slot, 2, 8);    // fsb：长载波 sync 调试
+        if (cmd[2] == 's')      onSend(slot, 0, 3, 2);    // fss：2 簇 × 3 帧（短按）
+        else if (cmd[2] == 'l') onSend(slot, 0, 15, 3);   // fsl：3 簇 × 15 帧（长按）
+        else if (cmd[2] == 'a') onSend(slot, 0, 8, 3);    // fsa：兼容（同 fs）
+        else                    onSend(slot, 2, 8, 3);    // fsb：长载波 sync 调试
         return;
     }
 
@@ -236,7 +241,7 @@ void Cli::dispatch()
             return;
         }
         if (cmd[0] == 'x' && cmd[1] == 'x') onLearn(slot);
-        else if (cmd[0] == 'f' && cmd[1] == 's') onSend(slot, 0, 8);   // RCSwitch 标准 8 帧
+        else if (cmd[0] == 'f' && cmd[1] == 's') onSend(slot, 0, 8, 3);   // fs：3 簇 × 8 帧
         else if (cmd[0] == 'd' && cmd[1] == 'u') onDump(slot);
         else onClr(slot);
         return;
@@ -413,7 +418,7 @@ void Cli::onLearnRf(uint16_t slot)
     }
 }
 
-void Cli::onSend(uint16_t slot, uint8_t variant, uint8_t frames)
+void Cli::onSend(uint16_t slot, uint8_t variant, uint8_t framesPerBurst, uint8_t bursts)
 {
     if (IrStore::isValidSlot(slot))
     {
@@ -427,7 +432,7 @@ void Cli::onSend(uint16_t slot, uint8_t variant, uint8_t frames)
         return;
     }
 
-    // RF：读码值 → 编码 → PA5 直驱，重复 frames 帧（帧间隔 10ms）
+    // RF：读码值 → 编码 → PA5 直驱，多簇连发（帧间隔 30ms，簇间隔 300ms）
     CodeTraits::Payload p;
     if (!rfStore_.load(slot, p))
     {
@@ -435,23 +440,29 @@ void Cli::onSend(uint16_t slot, uint8_t variant, uint8_t frames)
         return;
     }
     encodeRfVariant(signal_, p.code24, p.pulseUs, variant);
-    for (uint8_t r = 0; r < frames; ++r)
+    for (uint8_t b = 0; b < bursts; ++b)
     {
-        rfTransmitter_.play(signal_);
-        if (r + 1 < frames)
-            HAL_Delay(kRfFrameGapMs);           // 帧间隔（防相邻帧粘连）
+        for (uint8_t r = 0; r < framesPerBurst; ++r)
+        {
+            rfTransmitter_.play(signal_);
+            if (r + 1 < framesPerBurst)
+                HAL_Delay(kRfFrameGapMs);       // 帧间隔
+        }
+        if (b + 1 < bursts)
+            HAL_Delay(kRfBurstGapMs);           // 簇间隔（唤醒+确认）
     }
-    reply("FS %u OK (v%u x%u)", static_cast<unsigned>(slot),
-          static_cast<unsigned>(variant), static_cast<unsigned>(frames));
+    reply("FS %u OK (v%u %ux%u)", static_cast<unsigned>(slot),
+          static_cast<unsigned>(variant),
+          static_cast<unsigned>(bursts), static_cast<unsigned>(framesPerBurst));
 }
 
 void Cli::onHelp()
 {
     reply("HOPE-Remote commands:");
     reply("  xxNNN  learn remote (000-095 IR, 100-611 RF)");
-    reply("  fsNNN  play RF slot (RCSwitch std, 8 frames)");
-    reply("  fssNNN RF short-press (3 frames, for picky lamps)");
-    reply("  fslNNN RF long-press (15 frames)");
+    reply("  fsNNN  play RF slot (RCSwitch std, 3 bursts x 8 frames)");
+    reply("  fssNNN RF short-press (2 bursts x 3 frames)");
+    reply("  fslNNN RF long-press (3 bursts x 15 frames)");
     reply("  fsbNNN RF long-carrier sync variant (debug)");
     reply("  slots  list slot occupancy");
     reply("  duNNN  dump slot (IR segments / RF code)");
