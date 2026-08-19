@@ -109,3 +109,25 @@ void ev1527Encode(Signal& out, uint32_t code24, uint16_t pulseUs)
     out.append(true, 1 * p);             // sync mark：短载波（帧尾）
     out.append(false, 31 * p);           // sync space：长空闲（≈10ms @320μs）
 }
+
+void encodeRfVariant(Signal& out, uint32_t code24, uint16_t pulseUs, uint8_t variant)
+{
+    const uint32_t p = pulseUs;
+    out.clear();
+    for (int b = 23; b >= 0; --b)        // MSB first，数据先行
+    {
+        const bool one = (code24 >> b) & 1;
+        out.append(true, one ? 3 * p : 1 * p);
+        out.append(false, one ? 1 * p : 3 * p);
+    }
+    if (variant == 2)
+    {
+        out.append(true, 31 * p);        // 长载波 sync（模块偏好，目标设备不认）
+        out.append(false, 1 * p);
+    }
+    else
+    {
+        out.append(true, 1 * p);         // RCSwitch 标准 sync
+        out.append(false, 31 * p);
+    }
+}

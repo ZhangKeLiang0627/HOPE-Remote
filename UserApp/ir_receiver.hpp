@@ -1,5 +1,5 @@
-#ifndef RECEIVER_HPP
-#define RECEIVER_HPP
+#ifndef IR_RECEIVER_HPP
+#define IR_RECEIVER_HPP
 
 #include <cstdint>
 #include "signal.hpp"
@@ -12,7 +12,7 @@ enum class CaptureState { Idle, WaitingEdge, WaitingGap, Capturing, Done, Timeou
 // 一体化接收头(HS0038 类 / 超外差射频接收模块)把载波解调为 TTL：空闲=高、收到载波=低，输出反相。
 // 边沿靠 ADC1 相邻采样 |diff|>阈值 判定，用 TIM2 计每段时长。
 // 保存到数组时电平取反，存真实 IR 信号(载波=高/mark、无载波=低/space)，与发送侧一致。
-class Receiver
+class IrReceiver
 {
 public:
     // 录制常量（可调）
@@ -70,4 +70,4 @@ private:
                                     // 空闲判定与存储极性都以它为准，做到模块输出极性无关。
 };
 
-#endif // RECEIVER_HPP
+#endif // IR_RECEIVER_HPP

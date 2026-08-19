@@ -4,7 +4,8 @@
 #include "tim.h"
 #include "signal.hpp"
 #include "slot_store.hpp"
-#include "receiver.hpp"
+#include "ir_receiver.hpp"
+#include "rf_receiver.hpp"
 #include "transmitter.hpp"
 #include "ir_transmitter.hpp"
 #include "rf_transmitter.hpp"
@@ -34,11 +35,13 @@ public:
 private:
     IrStore        irStore_;      // IR 波形槽 0~95（扇区4/5/6）
     RfStore        rfStore_;      // RF 码值槽 100~611（扇区7 前 4KB）
+    RfReceiver     rfReceiver_;   // RF 串口帧接收器（USART2）
     Signal         signal_;       // 2KB 波形缓冲（510 段）
-    Receiver       receiver_;
+    IrReceiver     irReceiver_;   // IR 接收器（PA0/ADC1_CH0）
     IrTransmitter  irTransmitter_;
     RfTransmitter  rfTransmitter_;
-    Cli            cli_{irStore_, rfStore_, signal_, receiver_, irTransmitter_, rfTransmitter_};
+    Cli            cli_{irStore_, rfStore_, rfReceiver_, signal_, irReceiver_,
+                        irTransmitter_, rfTransmitter_};
 };
 
 App app;

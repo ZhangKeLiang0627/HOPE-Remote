@@ -25,4 +25,9 @@ bool ev1527Decode(const Signal& sig, uint32_t& code24, uint16_t& pulseUs);
 // 由 24 位码 + 脉宽生成标准 EV1527 帧（50 段：sync + 24bit）。用于重放前规范化存储。
 void ev1527Encode(Signal& out, uint32_t code24, uint16_t pulseUs);
 
+// RF 回放编码变体（实测结论，见 docs/rf-uart2-debug.md）：
+//   variant 0 = RCSwitch 标准（sync 收尾 1p+31p + MSB，目标设备实测通杀，默认）
+//   variant 2 = 长载波 sync 收尾（31p+1p + MSB，调试用）
+void encodeRfVariant(Signal& out, uint32_t code24, uint16_t pulseUs, uint8_t variant);
+
 #endif // RF_TRANSMITTER_HPP

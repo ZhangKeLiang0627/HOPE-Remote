@@ -554,9 +554,14 @@
           <GroupName>UserApp</GroupName>
           <Files>
             <File>
-              <FileName>receiver.cpp</FileName>
+              <FileName>ir_receiver.cpp</FileName>
               <FileType>8</FileType>
-              <FilePath>..\UserApp\receiver.cpp</FilePath>
+              <FilePath>..\UserApp\ir_receiver.cpp</FilePath>
+            </File>
+            <File>
+              <FileName>rf_receiver.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>..\UserApp\rf_receiver.cpp</FilePath>
             </File>
             <File>
               <FileName>signal.cpp</FileName>

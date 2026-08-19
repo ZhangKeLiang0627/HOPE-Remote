@@ -8,10 +8,12 @@
 #include "adc.h"
 #include "tim.h"
 #include "interface_uart.h"
+#include "rf_receiver.hpp"
 #include "stm32f4xx_hal.h"
 
 // ---------------- USART1 接收环形缓冲（CLI 命令） ----------------
 // 生产者：USART1 RX 中断；消费者：主循环 poll()。单生产者单消费者。
+// USART2（RF 串口模块）的接收由 RfReceiver 类负责。
 namespace
 {
     constexpr uint32_t kRingSize = 256;
@@ -31,28 +33,11 @@ namespace
         return c;
     }
 
-    // ---------------- USART2 接收环形缓冲（RF 模块串口） ----------------
-    constexpr uint32_t kRfRingSize = 128;
-    uint8_t  rfRing_[kRfRingSize];
-    volatile uint32_t rfRingHead_ = 0;   // 写指针（ISR）
-    volatile uint32_t rfRingTail_ = 0;   // 读指针（主循环）
-    uint8_t  rfRxByte_ = 0;
-
     // 槽号上限：RF 码值槽 100~611
     constexpr uint16_t kMaxSlot = RfStore::kBaseSlot + RfStore::kNumSlots - 1;
 
     // RF 回放脉宽（跟随 433_test_arduino 实测：RCSwitch protocol 1）
     constexpr uint16_t kRfPulseUs = 320;
-
-    // RF 回放帧间隔：接收端靠帧尾长空闲(31p≈10ms)判定帧结束，
-    // 间隔 10ms 时相邻帧"粘连"导致个别帧解调失败（实测灯时好时坏），
-    // 原装遥控器典型帧间隔 20~40ms，取 30ms。
-    constexpr uint16_t kRfFrameGapMs = 30;
-
-    // RF 回放簇间隔：目标设备（灯）接收端常为低功耗轮询模式，第一簇仅用于
-    // "唤醒"，第二簇才完整收到 → 单簇发射经常无反应（实测需"连点"）。
-    // 固件自动多簇连发（簇间隔 300ms，模拟快速连按）。
-    constexpr uint16_t kRfBurstGapMs = 300;
 
     bool validSlot(uint16_t slot)
     {
@@ -89,34 +74,9 @@ namespace
         }
         return true;
     }
-
-    // RF 回放编码变体：
-    //   0 = RCSwitch 标准（sync 收尾 1p+31p + MSB，实测可控制灯，默认）
-    //   2 = 长载波 sync 收尾（31p+1p + MSB，fsb 调试用）
-    void encodeRfVariant(Signal& out, uint32_t code, uint16_t pulse, uint8_t variant)
-    {
-        const uint32_t p = pulse;
-        out.clear();
-        for (int b = 23; b >= 0; --b)        // MSB first，数据先行
-        {
-            const bool one = (code >> b) & 1;
-            out.append(true, one ? 3 * p : 1 * p);
-            out.append(false, one ? 1 * p : 3 * p);
-        }
-        if (variant == 2)
-        {
-            out.append(true, 31 * p);        // 长载波 sync（模块偏好，目标设备不认）
-            out.append(false, 1 * p);
-        }
-        else
-        {
-            out.append(true, 1 * p);         // RCSwitch 标准 sync
-            out.append(false, 31 * p);
-        }
-    }
 }
 
-// 覆盖 HAL 弱回调：USART1 → 命令环形缓冲；USART2 → RF 环形缓冲。
+// 覆盖 HAL 弱回调：USART1 → 命令环形缓冲；USART2 → RfReceiver。
 // 必须 extern "C" 以匹配 HAL 的 C 链接声明。
 extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart)
 {
@@ -132,19 +92,14 @@ extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart)
     }
     else if (huart == &huart2)
     {
-        const uint32_t next = (rfRingHead_ + 1) % kRfRingSize;
-        if (next != rfRingTail_)
-        {
-            rfRing_[rfRingHead_] = rfRxByte_;
-            rfRingHead_ = next;
-        }
-        HAL_UART_Receive_IT(&huart2, &rfRxByte_, 1);
+        RfReceiver::feedByte();
+        RfReceiver::resume();
     }
 }
 
-Cli::Cli(IrStore& ir, RfStore& rf, Signal& sig, Receiver& rx,
+Cli::Cli(IrStore& ir, RfStore& rf, RfReceiver& rfRx, Signal& sig, Receiver& rx,
          IrTransmitter& irTx, RfTransmitter& rfTx)
-    : irStore_(ir), rfStore_(rf), signal_(sig), receiver_(rx),
+    : irStore_(ir), rfStore_(rf), rfReceiver_(rfRx), signal_(sig), irReceiver_(rx),
       irTransmitter_(irTx), rfTransmitter_(rfTx)
 {
 }
@@ -155,10 +110,7 @@ void Cli::init()
     ringTail_ = 0;
     lineLen_  = 0;
     HAL_UART_Receive_IT(&huart1, &rxByte_, 1);
-    rfRingHead_ = 0;
-    rfRingTail_ = 0;
-    rfLineLen_  = 0;
-    HAL_UART_Receive_IT(&huart2, &rfRxByte_, 1);
+    rfReceiver_.begin();
 }
 
 void Cli::poll()
@@ -358,12 +310,12 @@ void Cli::onLearn(uint16_t slot)
 
     // ---- IR 路径（HS0038）：首边沿即录，空闲 100ms 判定结束 ----
     const uint32_t t0 = HAL_GetTick();
-    receiver_.start(signal_, 0);   // IR=ADC1_CH0(PA0)
+    irReceiver_.start(signal_, 0);   // IR=ADC1_CH0(PA0)
 
     CaptureState st;
     do
     {
-        st = receiver_.poll();
+        st = irReceiver_.poll();
     } while (st == CaptureState::WaitingEdge || st == CaptureState::Capturing);
     const uint32_t elapsedMs = HAL_GetTick() - t0;
 
@@ -393,18 +345,13 @@ void Cli::onLearn(uint16_t slot)
           static_cast<unsigned>(elapsedMs));
 }
 
-// RF 学习：消费 USART2 环形缓冲攒行 → 解析 "LC:xxxxxxxx" →
-// 连续 2 帧相同码即确认（参考 433_test_arduino 的两次相同确认），立即保存。
+// RF 学习：轮询 RfReceiver 取 LC:hex 帧 → 连续 2 帧相同码即确认，立即保存。
 // 15s 总超时兜底。
 void Cli::onLearnRf(uint16_t slot)
 {
     constexpr uint8_t kNeedMatch = 2;   // 两帧相同即确认（按下瞬间即可学完）
 
-    // 清掉残留帧与行缓冲，避免上次数据误判
-    while (rfRingHead_ != rfRingTail_)
-        rfRingTail_ = (rfRingTail_ + 1) % kRfRingSize;
-    rfLineLen_ = 0;
-
+    rfReceiver_.flush();
     const uint32_t t0 = HAL_GetTick();
     uint32_t lastCode = 0;
     uint8_t  matchCount = 0;
@@ -413,63 +360,45 @@ void Cli::onLearnRf(uint16_t slot)
 
     for (;;)
     {
-        if (HAL_GetTick() - t0 >= Receiver::kTimeoutMs)
+        if (HAL_GetTick() - t0 >= IrReceiver::kTimeoutMs)
         {
             reply("REC %u TIMEOUT (%ums)", static_cast<unsigned>(slot),
                   static_cast<unsigned>(HAL_GetTick() - t0));
             return;
         }
 
-        while (rfRingHead_ != rfRingTail_)
+        RfReceiver::Frame f;
+        while (rfReceiver_.poll())
         {
-            const uint8_t c = rfRing_[rfRingTail_];
-            rfRingTail_ = (rfRingTail_ + 1) % kRfRingSize;
-
-            if (c == '\r' || c == '\n')
+            if (!rfReceiver_.take(f))
+                continue;
+            if (!haveFirst || f.code32 != lastCode)
             {
-                if (rfLineLen_ > 0)
-                {
-                    rfLine_[rfLineLen_] = '\0';
-                    uint32_t code32 = 0;
-                    uint8_t  nHex = 0;
-                    if (parseRfLine(reinterpret_cast<const char*>(rfLine_), rfLineLen_, code32, nHex))
-                    {
-                        if (!haveFirst || code32 != lastCode)
-                        {
-                            lastCode = code32;
-                            matchCount = 1;
-                            haveFirst = true;
-                        }
-                        else
-                        {
-                            ++matchCount;
-                        }
-                        lastHex = nHex;
-                        // 连续两帧相同 → 立即确认保存（不等空闲）
-                        if (matchCount >= kNeedMatch)
-                        {
-                            const uint32_t code24 = (lastHex == 8) ? ((lastCode >> 8) & 0xFFFFFFu)
-                                                                   : (lastCode & 0xFFFFFFu);
-                            CodeTraits::Payload p;
-                            p.pulseUs = kRfPulseUs;
-                            p.code24  = code24;
-                            if (!rfStore_.save(slot, p))
-                            {
-                                reply("REC %u FLASHERR", static_cast<unsigned>(slot));
-                                return;
-                            }
-                            reply("REC %u OK 0x%06lX pulse=%u", static_cast<unsigned>(slot),
-                                  static_cast<unsigned long>(code24),
-                                  static_cast<unsigned>(p.pulseUs));
-                            return;
-                        }
-                    }
-                    rfLineLen_ = 0;
-                }
+                lastCode = f.code32;
+                matchCount = 1;
+                haveFirst = true;
             }
-            else if (rfLineLen_ < sizeof(rfLine_) - 1)
+            else
             {
-                rfLine_[rfLineLen_++] = c;
+                ++matchCount;
+            }
+            lastHex = f.nHex;
+            if (matchCount >= kNeedMatch)
+            {
+                const uint32_t code24 = (lastHex == 8) ? ((lastCode >> 8) & 0xFFFFFFu)
+                                                       : (lastCode & 0xFFFFFFu);
+                CodeTraits::Payload p;
+                p.pulseUs = kRfPulseUs;
+                p.code24  = code24;
+                if (!rfStore_.save(slot, p))
+                {
+                    reply("REC %u FLASHERR", static_cast<unsigned>(slot));
+                    return;
+                }
+                reply("REC %u OK 0x%06lX pulse=%u", static_cast<unsigned>(slot),
+                      static_cast<unsigned long>(code24),
+                      static_cast<unsigned>(p.pulseUs));
+                return;
             }
         }
     }
@@ -674,68 +603,27 @@ void Cli::printRaw(const Signal& sig, uint32_t len)
     Usart_sendString(&huart1, crlf);
 }
 
-// 解析 USART2 一行：形如 "LC:55C31129"。前缀大小写容错，hex 取 6~8 位。
-// 成功返回 true，code32 为 hex 数值，nHex 为 hex 位数。
-bool Cli::parseRfLine(const char* line, uint8_t len, uint32_t& code32, uint8_t& nHex)
-{
-    const char* h = nullptr;
-    uint8_t  hl = 0;
-
-    if (len >= 9 && line[0] == 'L' && line[1] == 'C' && line[2] == ':')
-    {
-        h = line + 3;
-        hl = static_cast<uint8_t>(len - 3);
-    }
-    else if (len >= 9 && line[0] == 'l' && line[1] == 'c' && line[2] == ':')
-    {
-        h = line + 3;
-        hl = static_cast<uint8_t>(len - 3);
-    }
-    else
-    {
-        return false;
-    }
-
-    if (hl < 6 || hl > 8)
-        return false;
-
-    uint32_t v = 0;
-    for (uint8_t i = 0; i < hl; ++i)
-    {
-        const char c = h[i];
-        uint8_t d;
-        if (c >= '0' && c <= '9')      d = static_cast<uint8_t>(c - '0');
-        else if (c >= 'a' && c <= 'f') d = static_cast<uint8_t>(c - 'a' + 10);
-        else if (c >= 'A' && c <= 'F') d = static_cast<uint8_t>(c - 'A' + 10);
-        else return false;
-        v = (v << 4) | d;
-    }
-    code32 = v;
-    nHex   = hl;
-    return true;
-}
-
 // 诊断：连续采样 ADC 1s 统计（IR/PA0）。期间按红外遥控器按键可看电平特征。
 void Cli::onDbg()
 {
-    receiver_.selectChannel(0);
+    irReceiver_.selectChannel(0);
     reply("DBG ch=0(IR/PA0): press IR remote button within 1s...");
 
     ADC1->CR2 &= ~ADC_CR2_CONT;
     HAL_ADC_Start(&hadc1);
 
     uint32_t minV = 4095, maxV = 0, sum = 0, cnt = 0, edges = 0;
-    uint16_t prev = receiver_.readAdc();
+    uint16_t prev = irReceiver_.readAdc();
     const uint32_t end = HAL_GetTick() + 1000;
     while (HAL_GetTick() < end)
     {
-        const uint16_t v = receiver_.readAdc();
+        const uint16_t v = irReceiver_.readAdc();
         if (v < minV) minV = v;
         if (v > maxV) maxV = v;
         sum += v;
         ++cnt;
         const uint16_t d = (v > prev) ? (v - prev) : (prev - v);
-        if (d > Receiver::kEdgeThreshold)
+        if (d > IrReceiver::kEdgeThreshold)
             ++edges;
         prev = v;
     }
@@ -749,7 +637,7 @@ void Cli::onDbg()
 // 诊断：固定 3000ms 窗口抓 IR 原始边沿（HS0038 空闲=高）。
 void Cli::onRaw()
 {
-    receiver_.selectChannel(0);
+    irReceiver_.selectChannel(0);
     reply("RAW ch=0(IR/PA0): capturing 3000ms, press & HOLD IR remote...");
     signal_.clear();
 
@@ -760,7 +648,7 @@ void Cli::onRaw()
     uint16_t prev = 0;
     for (int i = 0; i < 8; ++i)
     {
-        prev = receiver_.readAdc();
+        prev = irReceiver_.readAdc();
         sum += prev;
     }
     prev = static_cast<uint16_t>(sum / 8);
@@ -771,9 +659,9 @@ void Cli::onRaw()
     const uint32_t end = HAL_GetTick() + 3000;
     while (HAL_GetTick() < end)
     {
-        const uint16_t v = receiver_.readAdc();
+        const uint16_t v = irReceiver_.readAdc();
         const uint16_t d = (v > prev) ? (v - prev) : (prev - v);
-        if (d > Receiver::kEdgeThreshold)
+        if (d > IrReceiver::kEdgeThreshold)
         {
             if (!started)
             {
@@ -803,9 +691,7 @@ void Cli::onRaw()
 void Cli::onRfMon()
 {
     reply("RFMON listening UART2 (RF module), type 'x' + Enter to stop");
-    while (rfRingHead_ != rfRingTail_)
-        rfRingTail_ = (rfRingTail_ + 1) % kRfRingSize;
-    rfLineLen_ = 0;
+    rfReceiver_.flush();
 
     bool exit = false;
     while (!exit)
@@ -824,23 +710,12 @@ void Cli::onRfMon()
             break;
 
         // UART2 码流逐行打印
-        while (rfRingHead_ != rfRingTail_)
+        char raw[48];
+        uint8_t rawLen = 0;
+        while (rfReceiver_.poll())
         {
-            const uint8_t c = rfRing_[rfRingTail_];
-            rfRingTail_ = (rfRingTail_ + 1) % kRfRingSize;
-            if (c == '\r' || c == '\n')
-            {
-                if (rfLineLen_ > 0)
-                {
-                    rfLine_[rfLineLen_] = '\0';
-                    reply("RF: %s", reinterpret_cast<const char*>(rfLine_));
-                    rfLineLen_ = 0;
-                }
-            }
-            else if (rfLineLen_ < sizeof(rfLine_) - 1)
-            {
-                rfLine_[rfLineLen_++] = c;
-            }
+            if (rfReceiver_.takeRawLine(raw, rawLen))
+                reply("RF: %s", raw);
         }
     }
     reply("RFMON stopped");
@@ -853,9 +728,7 @@ void Cli::onRfLoop()
     constexpr uint32_t kTestCode = 0x55C311u;
     reply("RFLOOP standard EV1527 (sync-first 1p+31p, LSB): emit 0x55C311");
 
-    while (rfRingHead_ != rfRingTail_)
-        rfRingTail_ = (rfRingTail_ + 1) % kRfRingSize;
-    rfLineLen_ = 0;
+    rfReceiver_.flush();
 
     Signal tx;
     ev1527Encode(tx, kTestCode, kRfPulseUs);
@@ -865,7 +738,7 @@ void Cli::onRfLoop()
     {
         rfTransmitter_.play(tx);
         if (r + 1 < kRepeats)
-            HAL_Delay(kRfFrameGapMs);
+            HAL_Delay(10);
     }
 
     uint32_t got = 0;
@@ -873,28 +746,13 @@ void Cli::onRfLoop()
     const uint32_t t0 = HAL_GetTick();
     while (HAL_GetTick() - t0 < 2000 && !have)
     {
-        while (rfRingHead_ != rfRingTail_)
+        RfReceiver::Frame f;
+        while (rfReceiver_.poll())
         {
-            const uint8_t c = rfRing_[rfRingTail_];
-            rfRingTail_ = (rfRingTail_ + 1) % kRfRingSize;
-            if (c == '\r' || c == '\n')
+            if (rfReceiver_.take(f))
             {
-                if (rfLineLen_ > 0)
-                {
-                    rfLine_[rfLineLen_] = '\0';
-                    uint32_t code32 = 0;
-                    uint8_t  nh = 0;
-                    if (parseRfLine(reinterpret_cast<const char*>(rfLine_), rfLineLen_, code32, nh))
-                    {
-                        got = (nh == 8) ? ((code32 >> 8) & 0xFFFFFFu) : (code32 & 0xFFFFFFu);
-                        have = true;
-                    }
-                    rfLineLen_ = 0;
-                }
-            }
-            else if (rfLineLen_ < sizeof(rfLine_) - 1)
-            {
-                rfLine_[rfLineLen_++] = c;
+                got = (f.nHex == 8) ? ((f.code32 >> 8) & 0xFFFFFFu) : (f.code32 & 0xFFFFFFu);
+                have = true;
             }
         }
     }
@@ -912,7 +770,7 @@ void Cli::onRfLoop()
 // 分析 sync/bit 结构后精确复刻。PA4 需接串口模块的 DATA 解调输出（若有）。
 void Cli::onRfRaw()
 {
-    if (!receiver_.selectChannel(4))
+    if (!irReceiver_.selectChannel(4))
     {
         reply("ERR");
         return;
@@ -928,7 +786,7 @@ void Cli::onRfRaw()
     uint16_t prev = 0;
     for (int i = 0; i < 8; ++i)
     {
-        prev = receiver_.readAdc();
+        prev = irReceiver_.readAdc();
         sum += prev;
     }
     prev = static_cast<uint16_t>(sum / 8);
@@ -939,9 +797,9 @@ void Cli::onRfRaw()
     const uint32_t end = HAL_GetTick() + 3000;
     while (HAL_GetTick() < end)
     {
-        const uint16_t v = receiver_.readAdc();
+        const uint16_t v = irReceiver_.readAdc();
         const uint16_t d = (v > prev) ? (v - prev) : (prev - v);
-        if (d > Receiver::kEdgeThreshold)
+        if (d > IrReceiver::kEdgeThreshold)
         {
             if (!started)
             {
@@ -993,9 +851,7 @@ void Cli::onRfScan2(uint16_t slot)
         for (uint8_t ss = 0; ss < sizeof(kSpaces) / sizeof(kSpaces[0]); ++ss)
         {
             ++idx;
-            while (rfRingHead_ != rfRingTail_)
-                rfRingTail_ = (rfRingTail_ + 1) % kRfRingSize;
-            rfLineLen_ = 0;
+            rfReceiver_.flush();
 
             Signal tx;
             tx.clear();
@@ -1019,29 +875,14 @@ void Cli::onRfScan2(uint16_t slot)
             const uint32_t t0 = HAL_GetTick();
             while (HAL_GetTick() - t0 < 1000 && !haveRx)
             {
-                while (rfRingHead_ != rfRingTail_)
+                RfReceiver::Frame f;
+                while (rfReceiver_.poll())
                 {
-                    const uint8_t c = rfRing_[rfRingTail_];
-                    rfRingTail_ = (rfRingTail_ + 1) % kRfRingSize;
-                    if (c == '\r' || c == '\n')
+                    if (rfReceiver_.take(f))
                     {
-                        if (rfLineLen_ > 0)
-                        {
-                            rfLine_[rfLineLen_] = '\0';
-                            uint32_t code32 = 0;
-                            uint8_t  nh = 0;
-                            if (parseRfLine(reinterpret_cast<const char*>(rfLine_), rfLineLen_, code32, nh))
-                            {
-                                rxCode = (nh == 8) ? ((code32 >> 8) & 0xFFFFFFu)
-                                                   : (code32 & 0xFFFFFFu);
-                                haveRx = true;
-                            }
-                            rfLineLen_ = 0;
-                        }
-                    }
-                    else if (rfLineLen_ < sizeof(rfLine_) - 1)
-                    {
-                        rfLine_[rfLineLen_++] = c;
+                        rxCode = (f.nHex == 8) ? ((f.code32 >> 8) & 0xFFFFFFu)
+                                               : (f.code32 & 0xFFFFFFu);
+                        haveRx = true;
                     }
                 }
             }
@@ -1105,9 +946,7 @@ void Cli::onRfScan(uint16_t slot)
 
     for (uint8_t i = 0; i < sizeof(kVar) / sizeof(kVar[0]); ++i)
     {
-        while (rfRingHead_ != rfRingTail_)
-            rfRingTail_ = (rfRingTail_ + 1) % kRfRingSize;
-        rfLineLen_ = 0;
+        rfReceiver_.flush();
 
         const uint32_t emit = kVar[i].shifted ? ((code & 0x7FFFFFu) << 1) : code;
         const uint16_t p    = kVar[i].pulse ? kVar[i].pulse : pulse;
@@ -1156,29 +995,14 @@ void Cli::onRfScan(uint16_t slot)
         const uint32_t t0 = HAL_GetTick();
         while (HAL_GetTick() - t0 < 1500 && !haveRx)
         {
-            while (rfRingHead_ != rfRingTail_)
+            RfReceiver::Frame f;
+            while (rfReceiver_.poll())
             {
-                const uint8_t c = rfRing_[rfRingTail_];
-                rfRingTail_ = (rfRingTail_ + 1) % kRfRingSize;
-                if (c == '\r' || c == '\n')
+                if (rfReceiver_.take(f))
                 {
-                    if (rfLineLen_ > 0)
-                    {
-                        rfLine_[rfLineLen_] = '\0';
-                        uint32_t code32 = 0;
-                        uint8_t  nh = 0;
-                        if (parseRfLine(reinterpret_cast<const char*>(rfLine_), rfLineLen_, code32, nh))
-                        {
-                            rxCode = (nh == 8) ? ((code32 >> 8) & 0xFFFFFFu)
-                                               : (code32 & 0xFFFFFFu);
-                            haveRx = true;
-                        }
-                        rfLineLen_ = 0;
-                    }
-                }
-                else if (rfLineLen_ < sizeof(rfLine_) - 1)
-                {
-                    rfLine_[rfLineLen_++] = c;
+                    rxCode = (f.nHex == 8) ? ((f.code32 >> 8) & 0xFFFFFFu)
+                                           : (f.code32 & 0xFFFFFFu);
+                    haveRx = true;
                 }
             }
         }

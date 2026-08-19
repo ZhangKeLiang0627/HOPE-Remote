@@ -1,4 +1,4 @@
-#include "receiver.hpp"
+#include "ir_receiver.hpp"
 
 #include "adc.h"
 #include "tim.h"
@@ -6,7 +6,7 @@
 
 // hadc1 / htim2 由 CubeMX 生成的 adc.c / tim.c 定义，头文件已 extern "C" 声明
 
-void Receiver::start(Signal& sig, uint8_t adcChannel)
+void IrReceiver::start(Signal& sig, uint8_t adcChannel)
 {
     sig.clear();
     sig_ = &sig;
@@ -47,7 +47,7 @@ void Receiver::start(Signal& sig, uint8_t adcChannel)
     startTick_ = HAL_GetTick();
 }
 
-bool Receiver::selectChannel(uint8_t channel)
+bool IrReceiver::selectChannel(uint8_t channel)
 {
     if (channel == channel_)
         return true;
@@ -68,7 +68,7 @@ bool Receiver::selectChannel(uint8_t channel)
     return true;
 }
 
-uint16_t Receiver::readAdc()
+uint16_t IrReceiver::readAdc()
 {
     if (contMode_)
     {
@@ -100,7 +100,7 @@ uint16_t Receiver::readAdc()
     return static_cast<uint16_t>(HAL_ADC_GetValue(&hadc1));
 }
 
-CaptureState Receiver::poll()
+CaptureState IrReceiver::poll()
 {
     if (state_ != CaptureState::WaitingEdge &&
         state_ != CaptureState::WaitingGap &&
@@ -122,7 +122,7 @@ CaptureState Receiver::poll()
 }
 
 // ---- IR 捕获（HS0038）：首个边沿即进入录制，空闲 100ms 判定结束 ----
-CaptureState Receiver::pollIr(uint16_t sample, uint16_t diff)
+CaptureState IrReceiver::pollIr(uint16_t sample, uint16_t diff)
 {
     if (state_ == CaptureState::WaitingEdge)
     {
@@ -195,7 +195,7 @@ CaptureState Receiver::pollIr(uint16_t sample, uint16_t diff)
 }
 
 // ---- RF 捕获（远-R1）：帧间隔界定 + 段长校验，抗空闲噪声 ----
-CaptureState Receiver::pollRf(uint16_t sample, uint16_t diff)
+CaptureState IrReceiver::pollRf(uint16_t sample, uint16_t diff)
 {
     // WaitingGap：已确认一个帧间隔(连续空闲≥kFrameGapUs)，等它结束的边沿 = 帧起点
     if (state_ == CaptureState::WaitingGap)
@@ -297,7 +297,7 @@ CaptureState Receiver::pollRf(uint16_t sample, uint16_t diff)
 // ---- RF 帧有效性校验：段数与段长范围 + 存在长段(sync/长mark) ----
 // 真 EV1527 帧 ≈ sync(1.6ms)+20bit(400/1200μs 交替) ≈ 41 段，全落在 250~5000μs。
 // 空闲噪声段长随机分布，大量短段(<250μs)与偶发超长段(>5ms)会命中拒绝条件。
-bool Receiver::validateFrame() const
+bool IrReceiver::validateFrame() const
 {
     const uint32_t n = sig_->length();
     if (n < kMinRfSegs || n > kMaxRfSegs)
