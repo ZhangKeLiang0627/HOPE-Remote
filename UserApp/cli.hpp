@@ -45,8 +45,8 @@ public:
 private:
     void dispatch();
     void onLearn(uint16_t slot);
-    void onLearnRf(uint16_t slot);      // RF 学习：USART2 收 LC:hex，连续 3 帧去抖
-    void onSend(uint16_t slot);
+    void onLearnRf(uint16_t slot);      // RF 学习：USART2 收 LC:hex，连续 2 帧去抖
+    void onSend(uint16_t slot, uint8_t variant);   // variant: 0=标准EV1527 1=fsa 2=fsb
     void onHelp();
     void onSlots();
     void onDump(uint16_t slot);
@@ -57,7 +57,9 @@ private:
     void onRaw();                        // 诊断：3s 窗口抓 IR 原始边沿并打印
     void onRfMon();                      // 诊断：监听 USART2 码流，'x' 退出
     void onRfLoop();                     // 自测：PA5 发已知码 → USART2 回收比对
-    void onRfScan(uint16_t slot);        // 自测：8 种编码变体发射，目标设备实测定位
+    void onRfRaw();                      // 诊断：PA4 采样解调波形（抓真实遥控器）
+    void onRfScan(uint16_t slot);        // 自测：15 种编码变体发射，目标设备实测定位
+    void onRfScan2(uint16_t slot);       // 自测：sync-前置比例精扫 21 种，模块回收判 MATCH
     void printRaw(const Signal& sig, uint32_t len);
 
     // USART2 行缓冲解析：提取 "LC:" 后的 hex（6~8 位）→ code32
