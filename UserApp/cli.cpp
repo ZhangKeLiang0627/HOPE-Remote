@@ -74,6 +74,28 @@ namespace
         }
         return true;
     }
+
+    // 单个 hex 字符 → 0-15；非法字符返回 0xFF
+    uint8_t hexVal(char c)
+    {
+        if (c >= '0' && c <= '9') return static_cast<uint8_t>(c - '0');
+        if (c >= 'a' && c <= 'f') return static_cast<uint8_t>(c - 'a' + 10);
+        return 0xFF;
+    }
+
+    // 解析 6 位 hex（RRGGBB）为 3 个字节；非法返回 false
+    bool parseHex6(const char* s, uint8_t out[3])
+    {
+        for (uint8_t i = 0; i < 3; ++i)
+        {
+            const uint8_t hi = hexVal(s[i * 2]);
+            const uint8_t lo = hexVal(s[i * 2 + 1]);
+            if (hi == 0xFF || lo == 0xFF)
+                return false;
+            out[i] = static_cast<uint8_t>((hi << 4) | lo);
+        }
+        return true;
+    }
 }
 
 // 覆盖 HAL 弱回调：USART1 → 命令环形缓冲；USART2 → RfReceiver。
@@ -98,9 +120,9 @@ extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart)
 }
 
 Cli::Cli(IrStore& ir, RfStore& rf, RfReceiver& rfRx, Signal& sig, IrReceiver& rx,
-         IrTransmitter& irTx, RfTransmitter& rfTx)
+         IrTransmitter& irTx, RfTransmitter& rfTx, WS2812B& led)
     : irStore_(ir), rfStore_(rf), rfReceiver_(rfRx), signal_(sig), irReceiver_(rx),
-      irTransmitter_(irTx), rfTransmitter_(rfTx)
+      irTransmitter_(irTx), rfTransmitter_(rfTx), led_(led)
 {
 }
 
@@ -152,6 +174,33 @@ void Cli::dispatch()
     if (strcmp(cmd, "evtest") == 0)  { onEvTest();  return; }
     if (strcmp(cmd, "rfmon") == 0)   { onRfMon();   return; }
     if (strcmp(cmd, "rfloop") == 0)  { onRfLoop();  return; }
+
+    // lednRRGGBB：只刷第 n 颗灯珠（n=0/1）——用于单独定位每一颗
+    if (lineLen_ == 10 && strncmp(cmd, "led", 3) == 0)
+    {
+        const char d = cmd[3];
+        uint8_t rgb[3];
+        if (d < '0' || d > '9' || !parseHex6(cmd + 4, rgb))
+        {
+            reply("ERR");
+            return;
+        }
+        onLedAt(static_cast<uint8_t>(d - '0'), rgb[0], rgb[1], rgb[2]);
+        return;
+    }
+
+    // ledRRGGBB：设置 RGB 灯珠（PA6/TIM3_CH1）颜色，每分量 2 位 hex，两颗同色
+    if (lineLen_ == 9 && strncmp(cmd, "led", 3) == 0)
+    {
+        uint8_t rgb[3];
+        if (!parseHex6(cmd + 3, rgb))
+        {
+            reply("ERR");
+            return;
+        }
+        onLed(rgb[0], rgb[1], rgb[2]);
+        return;
+    }
 
     // rfscan2NNN：sync-前置比例精扫（mark 28-40p × space 1-3p），模块回收自动判 MATCH
     if (lineLen_ == 10 && strncmp(cmd, "rfscan2", 7) == 0)
@@ -456,6 +505,8 @@ void Cli::onHelp()
     reply("  duNNN  dump slot (IR segments / RF code)");
     reply("  clNNN  clear slot data");
     reply("  scNNN  set EV1527 code into RF slot: scNNN<hex6|hex8>");
+    reply("  ledRRGGBB  set both RGB LEDs (e.g. led00FF00)");
+    reply("  lednRRGGBB set only LED n (n=0/1, e.g. led1FF0000)");
     reply("  dbg    sample IR ADC 1s: min/max/avg/edges");
     reply("  raw    capture 3000ms IR raw signal & dump");
     reply("  rfmon  listen RF UART2 stream, x to stop");
@@ -546,6 +597,28 @@ void Cli::onSetCode(uint16_t slot, uint32_t full, bool eight)
     }
     reply("SC %u SET 0x%06lX pulse=%u", static_cast<unsigned>(slot),
           static_cast<unsigned long>(code24), static_cast<unsigned>(p.pulseUs));
+}
+
+void Cli::onLed(uint8_t r, uint8_t g, uint8_t b)
+{
+    // 两颗灯珠一起刷成同一颜色（共用一条数据线）
+    led_.SetPixels(WS2812B_NUM, WS2812B::Color(r, g, b));
+    led_.UpdatePixels();
+    reply("LED %02X%02X%02X", static_cast<unsigned>(r), static_cast<unsigned>(g),
+          static_cast<unsigned>(b));
+}
+
+void Cli::onLedAt(uint8_t idx, uint8_t r, uint8_t g, uint8_t b)
+{
+    if (idx >= WS2812B_NUM)
+    {
+        reply("ERR (led index 0-%u)", static_cast<unsigned>(WS2812B_NUM - 1));
+        return;
+    }
+    led_.SetPixelAt(idx, WS2812B::Color(r, g, b));
+    led_.UpdatePixels();
+    reply("LED%u %02X%02X%02X", static_cast<unsigned>(idx), static_cast<unsigned>(r),
+          static_cast<unsigned>(g), static_cast<unsigned>(b));
 }
 
 void Cli::onEvTest()

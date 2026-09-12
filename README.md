@@ -29,6 +29,9 @@
 | PA0 | IR 接收（ADC1_IN0，HS0038 输出） |
 | PA1 | IR 发射（38kHz 载波软件翻转） |
 | PA5 | RF 发射（远-T2L DATA，直驱基带电平，mark=高） |
+| PA6 | RGB 灯珠 ×2（WS2812B 串联，TIM3_CH1 PWM + DMA1_Stream4） |
+
+上电默认灯色：**灯0 奶油粉 `#FFB7C5`，灯1 奶油蓝 `#87CEEB`**（灯0 靠 MCU 侧，两颗互换只需对调 `main.cpp` 里 `bootColor[]` 的顺序）。
 
 ## CLI 命令
 
@@ -40,6 +43,8 @@
 | `duNNN` | 打印槽内容（IR 段时长 / RF 码值） |
 | `clNNN` | 清除槽数据 |
 | `scNNN` | RF 槽直接编程 EV1527 码：`scNNN<hex6\|hex8>` |
+| `ledRRGGBB` | 设置 RGB 灯珠颜色（两颗同色，每分量 2 位 hex，如 `led00FF00` 绿） |
+| `lednRRGGBB` | 只设置第 n 颗灯珠（n=0/1，如 `led1FF0000` 只点灯1 红），用于单独定位 |
 | `help` | 显示帮助 |
 
 调试命令（`rfmon`/`rfloop`/`rfscan`/`rfscan2`/`evtest`/`dbg`/`raw`）见 [docs/rf-uart2-debug.md](docs/rf-uart2-debug.md)。
@@ -56,12 +61,45 @@
 ## 目录结构
 
 - `UserApp/` — 应用逻辑（signal、slot_store 模板 + Traits、receiver、Transmitter 基类 + IR/RF 子类、CLI）
-- `Bsp/` — 板级驱动
+- `Bsp/` — 板级驱动（usart 调试口、ws2812b 灯珠）
 - `Core/` — CubeMX 生成代码（引脚初始化由 CubeMX 配置生成）
 - `Drivers/` — HAL 驱动
 - `MDK-ARM/` — Keil 工程
 - `docs/` — 调试与测试手册
 
+## RGB 灯珠（WS2812B）
+
+`Bsp/ws2812b/` 驱动移植自 HOPE-Link 工程（原 TIM5_CH3 @PA2），本项目改用 TIM3_CH1 @PA6。
+TIM3 与 TIM5 同挂 APB1、定时器时钟同为 84MHz，故时序参数不变：
+
+| 项 | 值 | 说明 |
+|---|---|---|
+| Prescaler / Period | 1-1 / 105-1 | 84MHz / 105 = 800kHz PWM 载波 |
+| T0H / T1H | 35 / 70 拍 | ≈417ns / ≈833ns（规格 400ns / 800ns ±150ns） |
+| 一帧长度 | NUM×24 + 50 拍 | 尾部 50 拍低电平 ≈62µs 复位间隔；NUM=2 时约 123µs |
+| 灯珠数 | `WS2812B_NUM = 2` | 两颗串联；改此宏即可扩展，须同步确认长度 |
+
+用法（`SetPixels` 传的是 24bit 值，且线上顺序为 GRB）：
+
+```cpp
+uint32_t colors[WS2812B_NUM] = {
+    WS2812B::Color(0xFF, 0xB7, 0xC5),   // 灯0 奶油粉
+    WS2812B::Color(0x87, 0xCE, 0xEB),   // 灯1 奶油蓝
+};
+led_.SetPixels(WS2812B_NUM, colors);    // Color() 负责打包成 G<<16 | R<<8 | B
+led_.UpdatePixels();
+```
+
+DMA 用 `DMA1_Stream4 / Channel 5`（TIM3_CH1/TRIG 的固定映射），Normal 模式、字对齐。
+`UpdatePixels()` 内部先 `HAL_TIM_PWM_Stop_DMA` 再启动，以支持反复刷新
+（HAL 的 PWM+DMA 是一次性启动，发完后通道状态停在 BUSY，重复启动会被判 HAL_BUSY 静默丢弃）。
+
 ## 构建
 
 用 Keil MDK 打开 `MDK-ARM/HOPE-Remote.uvprojx`，编译后下载。
+
+命令行批量编译：`UV4 -b MDK-ARM/HOPE-Remote.uvprojx -j0`。
+
+> 外设改动请走 STM32CubeMX：打开 `HOPE-Remote.ioc` 配置后 Generate Code，
+> 不要把自定义代码写进 `Core/` 的生成区（USER CODE 段除外）。新增的 `Bsp/` 源文件
+> 需手工加进 Keil 工程（CubeMX 只管理它自己生成的文件）。
