@@ -32,8 +32,6 @@
 | PA6 | RGB 灯珠 ×2（WS2812B 串联，TIM3_CH1 PWM + DMA1_Stream4） |
 | PC13 | 用户指示灯 LED（低电平点亮，学习中常亮） |
 
-上电默认灯色：**灯0 奶油粉 `#FFB7C5`，灯1 奶油蓝 `#87CEEB`**（灯0 靠 MCU 侧，两颗互换只需对调 `main.cpp` 里 `bootColor[]` 的顺序）。
-
 ## CLI 命令
 
 | 命令 | 说明 |
@@ -68,56 +66,6 @@
 - `Drivers/` — HAL 驱动
 - `MDK-ARM/` — Keil 工程
 - `docs/` — 调试与测试手册
-
-## 用户指示灯（PC13）
-
-电路为 **3.3V → 2kΩ → LED → PC13**，故 PC13 **拉低=亮、拉高=灭**，上电初始化即拉高（灭）。
-
-| 状态 | 灯 |
-|---|---|
-| 空闲 | 灭 |
-| `xxNNN` 学习中（IR 或 RF） | 常亮 |
-| 学习结束（OK / TIMEOUT / EMPTY / FLASHERR） | 灭 |
-
-超时不会提前灭灯——学习会话持续到 15s 超时为止，超时那一刻才熄灭。
-
-实现见 `Bsp/user_led/`。`Cli::onLearn()` 入口挂一个作用域守卫 `UserLed::Guard`，
-构造即点亮、析构必熄灭，因此 IR 与 RF 两条路径的全部 return 出口
-（含 RF 委托的 `onLearnRf`）都自动覆盖，不需要逐个补 `off()`。
-其余命令（`fs`/`du`/`raw`/`rfmon`/`dbg`/`rfloop`/`rfscan` 等）不点灯。
-
-> PC13 属备份域引脚，数据手册限定输出速度 ≤2MHz、灌电流 ≤3mA，
-> CubeMX 已配 `GPIO_SPEED_FREQ_LOW`，勿改成 `HIGH`。
-> 2kΩ 限流下电流 ≈0.65mA（按 Vf≈2.0V 估算），偏暗属正常；要更亮可换 1kΩ（≈1.3mA）。
-
-## RGB 灯珠（WS2812B）
-
-`Bsp/ws2812b/` 驱动移植自 HOPE-Link 工程（原 TIM5_CH3 @PA2），本项目改用 TIM3_CH1 @PA6。
-TIM3 与 TIM5 同挂 APB1、定时器时钟同为 84MHz，故时序参数不变：
-
-| 项 | 值 | 说明 |
-|---|---|---|
-| Prescaler / Period | 1-1 / 105-1 | 84MHz / 105 = 800kHz PWM 载波 |
-| T0H / T1H | 35 / 70 拍 | ≈417ns / ≈833ns（规格 400ns / 800ns ±150ns） |
-| 一帧长度 | NUM×24 + 50 拍 | 尾部 50 拍低电平 ≈62µs 复位间隔（经典版规格）；NUM=2 时一帧 ≈123µs |
-| 灯珠数 | `WS2812B_NUM = 2` | 两颗串联；改此宏即可扩展，须同步确认长度 |
-| 复位间隔 | `WS2812B_RESET_TICKS = 50` | 若遇到颜色/级联错位且怀疑复位不足，改成 300（≈375µs）兼容新版规格 |
-| 灯珠供电 | 建议 4.3-4.7V | 额定 3.5-5.3V；低于 4.2V 蓝/绿亮度不足，高于 4.7V 则 VIH 超出 3.3V 逻辑能力 |
-
-用法（`SetPixels` 传的是 24bit 值，且线上顺序为 GRB）：
-
-```cpp
-uint32_t colors[WS2812B_NUM] = {
-    WS2812B::Color(0xFF, 0xB7, 0xC5),   // 灯0 奶油粉
-    WS2812B::Color(0x87, 0xCE, 0xEB),   // 灯1 奶油蓝
-};
-led_.SetPixels(WS2812B_NUM, colors);    // Color() 负责打包成 G<<16 | R<<8 | B
-led_.UpdatePixels();
-```
-
-DMA 用 `DMA1_Stream4 / Channel 5`（TIM3_CH1/TRIG 的固定映射），Normal 模式、字对齐。
-`UpdatePixels()` 内部先 `HAL_TIM_PWM_Stop_DMA` 再启动，以支持反复刷新
-（HAL 的 PWM+DMA 是一次性启动，发完后通道状态停在 BUSY，重复启动会被判 HAL_BUSY 静默丢弃）。
 
 ## 构建
 
