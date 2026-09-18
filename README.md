@@ -30,6 +30,7 @@
 | PA1 | IR 发射（38kHz 载波软件翻转） |
 | PA5 | RF 发射（远-T2L DATA，直驱基带电平，mark=高） |
 | PA6 | RGB 灯珠 ×2（WS2812B 串联，TIM3_CH1 PWM + DMA1_Stream4） |
+| PC13 | 用户指示灯 LED（低电平点亮，学习中常亮） |
 
 上电默认灯色：**灯0 奶油粉 `#FFB7C5`，灯1 奶油蓝 `#87CEEB`**（灯0 靠 MCU 侧，两颗互换只需对调 `main.cpp` 里 `bootColor[]` 的顺序）。
 
@@ -45,6 +46,7 @@
 | `scNNN` | RF 槽直接编程 EV1527 码：`scNNN<hex6\|hex8>` |
 | `ledRRGGBB` | 设置 RGB 灯珠颜色（两颗同色，每分量 2 位 hex，如 `led00FF00` 绿） |
 | `lednRRGGBB` | 只设置第 n 颗灯珠（n=0/1，如 `led1FF0000` 只点灯1 红），用于单独定位 |
+| `uled0` / `uled1` | 手动熄灭 / 点亮 PC13 用户指示灯（硬件自检） |
 | `help` | 显示帮助 |
 
 调试命令（`rfmon`/`rfloop`/`rfscan`/`rfscan2`/`evtest`/`dbg`/`raw`）见 [docs/rf-uart2-debug.md](docs/rf-uart2-debug.md)。
@@ -61,11 +63,32 @@
 ## 目录结构
 
 - `UserApp/` — 应用逻辑（signal、slot_store 模板 + Traits、receiver、Transmitter 基类 + IR/RF 子类、CLI）
-- `Bsp/` — 板级驱动（usart 调试口、ws2812b 灯珠）
+- `Bsp/` — 板级驱动（usart 调试口、ws2812b 灯珠、user_led 用户指示灯）
 - `Core/` — CubeMX 生成代码（引脚初始化由 CubeMX 配置生成）
 - `Drivers/` — HAL 驱动
 - `MDK-ARM/` — Keil 工程
 - `docs/` — 调试与测试手册
+
+## 用户指示灯（PC13）
+
+电路为 **3.3V → 2kΩ → LED → PC13**，故 PC13 **拉低=亮、拉高=灭**，上电初始化即拉高（灭）。
+
+| 状态 | 灯 |
+|---|---|
+| 空闲 | 灭 |
+| `xxNNN` 学习中（IR 或 RF） | 常亮 |
+| 学习结束（OK / TIMEOUT / EMPTY / FLASHERR） | 灭 |
+
+超时不会提前灭灯——学习会话持续到 15s 超时为止，超时那一刻才熄灭。
+
+实现见 `Bsp/user_led/`。`Cli::onLearn()` 入口挂一个作用域守卫 `UserLed::Guard`，
+构造即点亮、析构必熄灭，因此 IR 与 RF 两条路径的全部 return 出口
+（含 RF 委托的 `onLearnRf`）都自动覆盖，不需要逐个补 `off()`。
+其余命令（`fs`/`du`/`raw`/`rfmon`/`dbg`/`rfloop`/`rfscan` 等）不点灯。
+
+> PC13 属备份域引脚，数据手册限定输出速度 ≤2MHz、灌电流 ≤3mA，
+> CubeMX 已配 `GPIO_SPEED_FREQ_LOW`，勿改成 `HIGH`。
+> 2kΩ 限流下电流 ≈0.65mA（按 Vf≈2.0V 估算），偏暗属正常；要更亮可换 1kΩ（≈1.3mA）。
 
 ## RGB 灯珠（WS2812B）
 

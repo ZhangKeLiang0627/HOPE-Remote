@@ -11,6 +11,7 @@
 #include "ir_transmitter.hpp"
 #include "rf_transmitter.hpp"
 #include "ws2812b.hpp"
+#include "user_led.hpp"
 
 // 串口命令入口（USART1 @115200）。
 //
@@ -23,6 +24,7 @@
 //   scNNN   RF 槽直接编程 EV1527 码：scNNN<hex6|hex8>
 //   ledRRGGBB 设置两颗 RGB 灯珠颜色（每分量 2 位 hex，两颗同色）
 //   lednRRGGBB 只设置第 n 颗（n=0/1），用于单独定位某一颗灯珠
+//   uled0/uled1 手动熄灭/点亮 PC13 用户指示灯（硬件自检）
 //   dbg     采样 ADC 1s（IR/PA0）统计
 //   raw     捕获 3000ms 原始 IR 波形并打印
 //   rfmon   监听 USART2 码流（RF 模块串口），x 退出
@@ -35,7 +37,7 @@ class Cli
 {
 public:
     Cli(IrStore& ir, RfStore& rf, RfReceiver& rfRx, Signal& sig, IrReceiver& rx,
-        IrTransmitter& irTx, RfTransmitter& rfTx, WS2812B& led);
+        IrTransmitter& irTx, RfTransmitter& rfTx, WS2812B& led, UserLed& userLed);
 
     // 清环形缓冲并启动 USART1/USART2 单字节中断接收。
     void init();
@@ -60,6 +62,7 @@ private:
     void onEvTest();
     void onLed(uint8_t r, uint8_t g, uint8_t b);   // RGB 灯珠（PA6/TIM3_CH1）两颗同色
     void onLedAt(uint8_t idx, uint8_t r, uint8_t g, uint8_t b);   // 只点第 idx 颗
+    void onUserLed(bool lit);            // PC13 用户指示灯手动控制（硬件自检）
     void onDbg();                        // 诊断：1s ADC 采样统计（IR/PA0）
     void onRaw();                        // 诊断：3s 窗口抓 IR 原始边沿并打印
     void onRfMon();                      // 诊断：监听 USART2 码流，'x' 退出
@@ -76,6 +79,7 @@ private:
     IrTransmitter& irTransmitter_;
     RfTransmitter& rfTransmitter_;
     WS2812B&       led_;
+    UserLed&       userLed_;             // PC13 用户指示灯（学习中常亮）
 
     uint8_t line_[64];
     uint8_t lineLen_ = 0;

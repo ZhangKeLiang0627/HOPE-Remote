@@ -120,9 +120,9 @@ extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart)
 }
 
 Cli::Cli(IrStore& ir, RfStore& rf, RfReceiver& rfRx, Signal& sig, IrReceiver& rx,
-         IrTransmitter& irTx, RfTransmitter& rfTx, WS2812B& led)
+         IrTransmitter& irTx, RfTransmitter& rfTx, WS2812B& led, UserLed& userLed)
     : irStore_(ir), rfStore_(rf), rfReceiver_(rfRx), signal_(sig), irReceiver_(rx),
-      irTransmitter_(irTx), rfTransmitter_(rfTx), led_(led)
+      irTransmitter_(irTx), rfTransmitter_(rfTx), led_(led), userLed_(userLed)
 {
 }
 
@@ -174,6 +174,15 @@ void Cli::dispatch()
     if (strcmp(cmd, "evtest") == 0)  { onEvTest();  return; }
     if (strcmp(cmd, "rfmon") == 0)   { onRfMon();   return; }
     if (strcmp(cmd, "rfloop") == 0)  { onRfLoop();  return; }
+
+    // uled0 / uled1：手动控制 PC13 用户指示灯（1=点亮 0=熄灭）。
+    // 用于上板先验硬件（确认限流电阻/LED 极性/焊接），学习流程会自动接管。
+    if (lineLen_ == 5 && strncmp(cmd, "uled", 4) == 0 &&
+        (cmd[4] == '0' || cmd[4] == '1'))
+    {
+        onUserLed(cmd[4] == '1');
+        return;
+    }
 
     // lednRRGGBB：只刷第 n 颗灯珠（n=0/1）——用于单独定位每一颗
     if (lineLen_ == 10 && strncmp(cmd, "led", 3) == 0)
@@ -346,6 +355,11 @@ void Cli::dispatch()
 
 void Cli::onLearn(uint16_t slot)
 {
+    // 学习期间 PC13 用户灯常亮：Guard 构造即点亮、析构必熄灭，
+    // 覆盖 OK/TIMEOUT/EMPTY/FLASHERR 全部 return 出口（IR 与 RF 两条
+    // 路径共用本函数入口，RF 分支委托 onLearnRf 后仍受本作用域托管）。
+    UserLed::Guard ledGuard(userLed_);
+
     reply("REC %u start", static_cast<unsigned>(slot));
     if (RfStore::isValidSlot(slot))
     {
@@ -507,6 +521,7 @@ void Cli::onHelp()
     reply("  scNNN  set EV1527 code into RF slot: scNNN<hex6|hex8>");
     reply("  ledRRGGBB  set both RGB LEDs (e.g. led00FF00)");
     reply("  lednRRGGBB set only LED n (n=0/1, e.g. led1FF0000)");
+    reply("  uled0/uled1 manual user LED (PC13) off/on - hardware check");
     reply("  dbg    sample IR ADC 1s: min/max/avg/edges");
     reply("  raw    capture 3000ms IR raw signal & dump");
     reply("  rfmon  listen RF UART2 stream, x to stop");
@@ -619,6 +634,13 @@ void Cli::onLedAt(uint8_t idx, uint8_t r, uint8_t g, uint8_t b)
     led_.UpdatePixels();
     reply("LED%u %02X%02X%02X", static_cast<unsigned>(idx), static_cast<unsigned>(r),
           static_cast<unsigned>(g), static_cast<unsigned>(b));
+}
+
+// 手动控制 PC13 用户指示灯，用于上板先验硬件（极性、限流电阻、焊接）。
+void Cli::onUserLed(bool lit)
+{
+    userLed_.set(lit);
+    reply("ULED %s", lit ? "on" : "off");
 }
 
 void Cli::onEvTest()

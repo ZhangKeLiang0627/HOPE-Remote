@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F401xE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../Bsp/usart;../Bsp/ws2812b;../UserApp</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../Bsp/usart;../Bsp/ws2812b;../Bsp/user_led;../UserApp</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -608,6 +608,11 @@
               <FileName>ws2812b.cpp</FileName>
               <FileType>8</FileType>
               <FilePath>..\Bsp\ws2812b\ws2812b.cpp</FilePath>
+            </File>
+            <File>
+              <FileName>user_led.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>..\Bsp\user_led\user_led.cpp</FilePath>
             </File>
           </Files>
         </Group>

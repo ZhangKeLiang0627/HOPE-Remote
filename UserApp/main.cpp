@@ -11,6 +11,7 @@
 #include "rf_transmitter.hpp"
 #include "cli.hpp"
 #include "ws2812b.hpp"
+#include "user_led.hpp"
 
 static_assert(Signal::kMaxSegments == WaveTraits::kMaxPayload,
               "Signal 缓冲须与 IR 槽容量一致");
@@ -26,6 +27,8 @@ public:
         //   PA1(GPIO_Output)      = IR 发射 38kHz
         //   PA0(ADC1_CH0)         = IR 接收
         //   PA6(TIM3_CH1 PWM+DMA) = RGB 灯珠（WS2812B）
+        //   PC13(GPIO_Output)     = 用户指示灯（低电平点亮）
+        userLed_.begin();            // 确保上电熄灭，仅学习中点亮
         cli_.init();
 
         uint32_t bootColor[WS2812B_NUM] = {
@@ -51,8 +54,9 @@ private:
     IrTransmitter  irTransmitter_;
     RfTransmitter  rfTransmitter_;
     WS2812B        led_{&htim3};   // RGB 灯珠（PA6 / TIM3_CH1 PWM+DMA）
+    UserLed        userLed_;       // 用户指示灯（PC13，低电平点亮）
     Cli            cli_{irStore_, rfStore_, rfReceiver_, signal_, irReceiver_,
-                        irTransmitter_, rfTransmitter_, led_};
+                        irTransmitter_, rfTransmitter_, led_, userLed_};
 };
 
 App app;
