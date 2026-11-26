@@ -92,8 +92,8 @@ HOPE-Remote/
 │  ├─ Drivers/        CMSIS + STM32F4xx HAL
 │  ├─ MDK-ARM/        Keil 工程与构建产物
 │  └─ scripts/        编译 / 烧录 / 串口自测脚本
-├─ hardware/          EasyEDA Pro 工程 + Gerber（v1.2）
-├─ images/            板卡预览图
+├─ hardware/          立创EDA 工程 + Gerber（v1.2）
+├─ images/            板卡预览与配件图
 └─ docs/              设计与调试文档
 ```
 
@@ -115,7 +115,7 @@ HOPE-Remote/
   <img src="images/pcb-render-2.jpg" width="46%" alt="HOPE-Remote PCB 预览 B">
 </p>
 
-<p align="center"><sub>HOPE-Remote v1.2 板卡预览 · EasyEDA Pro 导出</sub></p>
+<p align="center"><sub>HOPE-Remote v1.2 板卡预览</sub></p>
 
 | 项 | 参数 |
 |---|---|
@@ -123,9 +123,9 @@ HOPE-Remote/
 | 主控 | STM32F401（LQFP64，84 MHz，HSE 25 MHz） |
 | 板卡 | 32 × 34 mm，4 层 |
 | 供电 | Type-C VBUS / 电池 VIN 双路输入 |
-| 设计工具 | EasyEDA Pro 3.2 |
+| 设计工具 | 立创EDA |
 
-设计文件（EasyEDA Pro 工程 + Gerber）见 [hardware/](hardware/README.md)。
+设计文件（立创EDA 工程 + Gerber）与购件清单见 [hardware/](hardware/README.md)；射频接收模块必须选串口版，详见 [hardware/README.md 关键配件](hardware/README.md#4-关键配件)。
 
 ## 已知限制
 
