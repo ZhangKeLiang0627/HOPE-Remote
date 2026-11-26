@@ -53,7 +53,7 @@ FS 0 OK
 - **学习射频键**
 
 ```
-xx103                 ← 100 起为射频槽
+xx103                 ← 串口输入，然后对着板子按遥控器，学习保存一个射频信号到槽位103
 REC 103 start
 hold remote button until REC OK
 REC 103 OK 0x62E7E8 pulse=320
