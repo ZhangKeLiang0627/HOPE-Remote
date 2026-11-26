@@ -8,6 +8,11 @@
 ![Hardware](https://img.shields.io/badge/hardware-v1.2-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
+<p align="center">
+  <img src="images/pcb-render-1.jpg" width="49%" alt="HOPE-Remote PCB TOP">
+  <img src="images/pcb-render-2.jpg" width="49%" alt="HOPE-Remote PCB BACK">
+</p>
+
 把任意红外遥控器（38 kHz 载波）和 433 MHz 射频遥控器（EV1527）的按键「录」进 Flash 槽位，再用一条串口命令原样「放」出来。插上 Type-C 就能用，不需要上位机软件。
 
 红外走的是**原始波形录制**，不做协议解码，因此不分品牌、不分协议；射频走**外接串口解码模块**，自动抓 24 bit 码值。
@@ -26,34 +31,26 @@
 
 ## 快速开始
 
-**1. 准备**
+- **连接串口**
 
-- HOPE-Remote v1.2 板一块
-- Type-C 线（供电 + 串口，板载 CH340N 转 USB）
-- 待学习的遥控器；射频功能还需外接 433 MHz 收发模块
+> [!NOTE]
+> **115200 8N1，命令以 `\r` 或 `\n` 结尾。**
 
-**2. 烧录固件**
-
-不想装 Keil：直接烧 [release/HOPE-Remote-firmware.hex](release/HOPE-Remote-firmware.hex)（见 [release/README.md](release/README.md)）。
-
-要自己编译：打开 `firmware/MDK-ARM/HOPE-Remote.uvprojx`，Build + Download（见 [firmware/README.md](firmware/README.md)）。
-
-**3. 连串口**
-
-115200 8N1，命令以 `\r` 或 `\n` 结尾，大小写不敏感。
-
-**4. 学一个红外键**
+- **学习红外键**
 
 ```
-xx000                 ← 把 0 号槽置为学习态，然后对着板子按遥控器
+xx000                 ← 串口输入，然后对着板子按遥控器，学习保存一个红外信号到槽位000
 REC 0 start
 REC 0 OK (68 seg, 67432 us, 1123ms)
 
-fs000                 ← 回放
+fs000                 ← 回放槽位000的红外信号
 FS 0 OK
 ```
 
-**5. 学一个射频键**
+> [!TIP]
+> **Ps：槽位000 - 095都是红外信号的。**
+
+- **学习射频键**
 
 ```
 xx103                 ← 100 起为射频槽
@@ -61,11 +58,12 @@ REC 103 start
 hold remote button until REC OK
 REC 103 OK 0x62E7E8 pulse=320
 
-fs103                 ← 默认 8 帧 × 1 簇，帧间隔 5 ms
+fs103                 ← 回放槽位103的射频信号（默认 8 帧 × 1 簇，帧间隔 5 ms
 FS 103 OK (v0 1x8 g5/300)
 ```
 
-> 上面的串口回显为示例，段数 / 码值随遥控器不同。
+> [!TIP]
+> **Ps：槽位100 - 611都是射频信号的。**
 
 ## 命令速查
 
@@ -114,22 +112,7 @@ HOPE-Remote/
 
 ## 硬件
 
-<p align="center">
-  <img src="images/pcb-render-1.jpg" width="46%" alt="HOPE-Remote PCB 预览 A">
-  <img src="images/pcb-render-2.jpg" width="46%" alt="HOPE-Remote PCB 预览 B">
-</p>
-
-<p align="center"><sub>HOPE-Remote v1.2 板卡预览</sub></p>
-
-| 项 | 参数 |
-|---|---|
-| 版本 | v1.2（2026-11-26） |
-| 主控 | STM32F401（LQFP64，84 MHz，HSE 25 MHz） |
-| 板卡 | 32 × 34 mm，4 层 |
-| 供电 | Type-C VBUS / 电池 VIN 双路输入 |
-| 设计工具 | 立创EDA |
-
-设计文件（立创EDA 工程 + Gerber）与购件清单见 [hardware/](hardware/README.md)；射频接收模块必须选串口版，详见 [hardware/README.md 关键配件](hardware/README.md#4-关键配件)。
+设计文件（PCB工程 & Gerber）与关键购件清单见 [hardware/](hardware/README.md).
 
 ## 已知限制
 
