@@ -63,3 +63,6 @@ docs/superpowers
 # Build log
 firmware/MDK-ARM/BuildLog.txt
 firmware/MDK-ARM/build.log
+
+# 发布固件例外：release 目录下的 hex 需要入库
+!release/*.hex

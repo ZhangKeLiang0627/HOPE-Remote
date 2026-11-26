@@ -34,7 +34,9 @@
 
 **2. 烧录固件**
 
-打开 `firmware/MDK-ARM/HOPE-Remote.uvprojx`，Build + Download（或见 [firmware/README.md](firmware/README.md)）。
+不想装 Keil：直接烧 [release/HOPE-Remote-firmware.hex](release/HOPE-Remote-firmware.hex)（见 [release/README.md](release/README.md)）。
+
+要自己编译：打开 `firmware/MDK-ARM/HOPE-Remote.uvprojx`，Build + Download（见 [firmware/README.md](firmware/README.md)）。
 
 **3. 连串口**
 
@@ -93,6 +95,7 @@ HOPE-Remote/
 │  ├─ MDK-ARM/        Keil 工程与构建产物
 │  └─ scripts/        编译 / 烧录 / 串口自测脚本
 ├─ hardware/          立创EDA 工程 + Gerber（v1.2）
+├─ release/           预编译固件（直接烧录）
 ├─ images/            板卡预览与配件图
 └─ docs/              设计与调试文档
 ```
@@ -101,6 +104,7 @@ HOPE-Remote/
 
 | 文档 | 内容 |
 |---|---|
+| [release/README.md](release/README.md) | 预编译固件与烧录方法 |
 | [firmware/README.md](firmware/README.md) | 固件构建、烧录、引脚映射、代码结构 |
 | [hardware/README.md](hardware/README.md) | 板级规格、接口、设计文件、打样装配 |
 | [docs/cli-reference.md](docs/cli-reference.md) | CLI 命令完整参考（语法 / 参数 / 返回 / 示例） |
