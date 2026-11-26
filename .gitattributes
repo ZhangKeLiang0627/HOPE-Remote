@@ -1,0 +1,4 @@
+# 固件产物按二进制存储，禁止 git 做 CRLF/LF 转换
+# 否则线上文件与本地字节不一致，README 中的 SHA-256 无法校验
+*.hex -text
+*.bin -text
