@@ -29,12 +29,10 @@ PA6  → 2 × WS2812B                 PC13 → 用户指示灯
 红外与射频的收发均为外购件，实物参考（购件前对照确认型号）：
 
 <p align="center">
-  <img src="../images/accessory-1.jpg" height="300" alt="收发配件 1">
-  <img src="../images/accessory-2.jpg" height="300" alt="收发配件 2">
-</p>
-<p align="center">
-  <img src="../images/accessory-3.jpg" height="300" alt="收发配件 3">
-  <img src="../images/accessory-4.jpg" height="300" alt="收发配件 4">
+  <img src="../images/accessory-1.jpg" width="23%" alt="收发配件 1">
+  <img src="../images/accessory-2.jpg" width="23%" alt="收发配件 2">
+  <img src="../images/accessory-3.jpg" width="23%" alt="收发配件 3">
+  <img src="../images/accessory-4.jpg" width="23%" alt="收发配件 4">
 </p>
 
 | 用途 | 型号 | 接线 |
