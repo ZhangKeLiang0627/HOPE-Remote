@@ -1,7 +1,7 @@
 # 槽位存储层设计文档（SlotStore）
 
 > 本文档梳理 HOPE-Remote 的**统一槽位存储层**——Flash 槽区管理（地址映射 / 整槽擦除态检测 / 覆盖写暂存重写 / 擦扇区 / 校验）的全部实现与两类存储的差异。
-> 日常使用与 CLI 命令见根目录 [README.md](../README.md)；RF 串口模块的调试与回放时序见 [docs/rf-uart2-debug.md](rf-uart2-debug.md)。
+> 日常使用见[根目录 README.md](../README.md)，CLI 命令逐条说明见 [cli-reference.md](cli-reference.md)；RF 串口模块的调试与回放时序见 [rf-uart2-debug.md](rf-uart2-debug.md)。
 
 ## 1. 设计目标
 

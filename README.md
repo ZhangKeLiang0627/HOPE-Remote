@@ -1,53 +1,131 @@
 # HOPE-Remote
 
-基于 STM32F401RE 的遥控码学习/复现设备（红外 IR + 433MHz 射频 RF）。
+**红外 + 433 MHz 射频遥控码学习与回放器**
 
-## 硬件引脚
+![MCU](https://img.shields.io/badge/MCU-STM32F401-03234B)
+![Toolchain](https://img.shields.io/badge/toolchain-Keil%20MDK%205.35-1a1a2e)
+![Language](https://img.shields.io/badge/C%2B%2B-AC6-00599C)
+![Hardware](https://img.shields.io/badge/hardware-v1.2-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-| 引脚 | 功能 |
+把任意红外遥控器（38 kHz 载波）和 433 MHz 射频遥控器（EV1527）的按键「录」进 Flash 槽位，再用一条串口命令原样「放」出来。插上 Type-C 就能用，不需要上位机软件。
+
+红外走的是**原始波形录制**，不做协议解码，因此不分品牌、不分协议；射频走**外接串口解码模块**，自动抓 24 bit 码值。
+
+## 功能
+
+| 能力 | 说明 |
 |---|---|
-| PA9 | 串口调试 TX（USART1_TX） |
-| PA10 | 串口调试 RX（USART1_RX） |
-| PA3 | RF 串口接收（USART2_RX，灵-R1A 串口版 TX，9600） |
-| PA2 | USART2_TX（当前未用，预留） |
-| PA0 | IR 接收（ADC1_IN0，HS0038 输出） |
-| PA1 | IR 发射（38kHz 载波软件翻转） |
-| PA5 | RF 发射（远-T2L DATA，直驱基带电平，mark=高） |
-| PA6 | RGB 灯珠 ×2（WS2812B 串联，TIM3_CH1 PWM + DMA1_Stream4） |
-| PC13 | 用户指示灯 LED（低电平点亮，学习中常亮） |
+| 红外学习 | 红外接收头（VS1838B / HS0038 类）+ ADC 边沿采样，录下整段原始波形（≤ 510 段），不依赖协议 |
+| 红外回放 | PA1 软件翻转生成 38 kHz 载波，按段时长逐段重发 |
+| 射频学习 | USART2 接 433 MHz 串口解码模块，连续 2 帧相同码即确认保存 |
+| 射频回放 | PA5 直驱发射模块，帧数 / 簇数 / 帧间隔 / 簇间隔全可调 |
+| 掉电保存 | 96 个红外波形槽 + 512 个射频码值槽，存内部 Flash |
+| 状态指示 | 双 WS2812B 灯珠 + PC13 用户灯（学习期间常亮） |
+| 全命令行操作 | USART1 @115200，学 / 放 / 查 / 删都由串口命令完成 |
 
-上电默认灯色：**灯0 奶油粉 `#FFB7C5`，灯1 奶油蓝 `#87CEEB`**（灯0 靠 MCU 侧，两颗互换只需对调 `main.cpp` 里 `bootColor[]` 的顺序）。
+## 快速开始
 
-## CLI 命令
+**1. 准备**
 
-| 命令 | 说明 |
+- HOPE-Remote v1.2 板一块
+- Type-C 线（供电 + 串口，板载 CH340N 转 USB）
+- 待学习的遥控器；射频功能还需外接 433 MHz 收发模块
+
+**2. 烧录固件**
+
+打开 `firmware/MDK-ARM/HOPE-Remote.uvprojx`，Build + Download（或见 [firmware/README.md](firmware/README.md)）。
+
+**3. 连串口**
+
+115200 8N1，命令以 `\r` 或 `\n` 结尾，大小写不敏感。
+
+**4. 学一个红外键**
+
+```
+xx000                 ← 把 0 号槽置为学习态，然后对着板子按遥控器
+REC 0 start
+REC 0 OK (68 seg, 67432 us, 1123ms)
+
+fs000                 ← 回放
+FS 0 OK
+```
+
+**5. 学一个射频键**
+
+```
+xx103                 ← 100 起为射频槽
+REC 103 start
+hold remote button until REC OK
+REC 103 OK 0x62E7E8 pulse=320
+
+fs103                 ← 默认 8 帧 × 1 簇，帧间隔 5 ms
+FS 103 OK (v0 1x8 g5/300)
+```
+
+> 上面的串口回显为示例，段数 / 码值随遥控器不同。
+
+## 命令速查
+
+| 命令 | 作用 |
 |---|---|
-| `xxNNN` | 学习遥控码到槽（000-095 IR，100-611 RF） |
-| `fsNNN` | 播放槽（RF 支持发射参数，见下） |
-| `slots` | 列出槽占用情况 |
-| `duNNN` | 打印槽内容（IR 段时长 / RF 码值） |
-| `clNNN` | 清除槽数据 |
-| `scNNN` | RF 槽直接编程 EV1527 码：`scNNN<hex6\|hex8>` |
-| `ledRRGGBB` | 设置 RGB 灯珠颜色（两颗同色，每分量 2 位 hex，如 `led00FF00` 绿） |
-| `lednRRGGBB` | 只设置第 n 颗灯珠（n=0/1，如 `led1FF0000` 只点灯1 红），用于单独定位 |
-| `uled0` / `uled1` | 手动熄灭 / 点亮 PC13 用户指示灯（硬件自检） |
-| `help` | 显示帮助 |
+| `xxNNN` | 学习到槽 NNN（000-095 红外，100-611 射频） |
+| `fsNNN [f b g bg]` | 回放槽 NNN，可选覆盖发射参数 |
+| `slots` | 列出槽位占用情况 |
+| `duNNN` | 查看槽内容（红外段数组 / 射频码值） |
+| `clNNN` | 清除槽 |
+| `scNNN<hex6\|hex8>` | 免学习，直接把 EV1527 码写进射频槽 |
+| `ledRRGGBB` / `lednRRGGBB` | 设置两颗 / 第 n 颗 RGB 灯珠颜色 |
+| `uled0` / `uled1` | 用户灯灭 / 亮（硬件自检） |
+| `help` | 板端帮助 |
 
-调试命令（`rfmon`/`rfloop`/`rfscan`/`rfscan2`/`evtest`/`dbg`/`raw`）见 [docs/rf-uart2-debug.md](docs/rf-uart2-debug.md)。
+完整命令（含调试命令 `rfmon` / `rfloop` / `rfscan` / `evtest` / `dbg` / `raw`）见 [docs/cli-reference.md](docs/cli-reference.md)。
 
-> **槽号格式**：`NNN` 支持 2-3 位。IR 槽 0-95；RF 槽 100-611（3 位）。96-99 为保留无效区。
+## 仓库结构
 
-> **RF 学习**：按住原遥控按键，连续 2 帧相同码即确认保存（按下瞬间完成），15s 超时。
-> 码值取 hex 前 24 位（RCSwitch 约定一致）。
+```
+HOPE-Remote/
+├─ firmware/          STM32F401 固件（Keil MDK）
+│  ├─ UserApp/        应用层：CLI、收发器、槽位存储
+│  ├─ Bsp/            板级驱动：USART、WS2812B、用户灯
+│  ├─ Core/           CubeMX 生成的 HAL 初始化与中断
+│  ├─ Drivers/        CMSIS + STM32F4xx HAL
+│  ├─ MDK-ARM/        Keil 工程与构建产物
+│  └─ scripts/        编译 / 烧录 / 串口自测脚本
+├─ hardware/          EasyEDA Pro 工程 + Gerber（v1.2）
+└─ docs/              设计与调试文档
+```
 
-> **RF 回放**：RCSwitch 标准时序（数据先行 24bit MSB + sync 收尾 1p+31p，pulse 320μs）。
-> 默认发射参数 **8 帧 × 1 簇 × 帧间隔 5ms × 簇间隔 300ms**，
-> 可用 `fsNNN [帧数 簇数 帧间隔ms 簇间隔ms]` 覆盖（如 `fs103 1 1` 单帧、`fs103 8 1 5 300` 显式指定）。
+## 文档
 
-## Flash槽位布局
+| 文档 | 内容 |
+|---|---|
+| [firmware/README.md](firmware/README.md) | 固件构建、烧录、引脚映射、代码结构 |
+| [hardware/README.md](hardware/README.md) | 板级规格、接口、设计文件、打样装配 |
+| [docs/cli-reference.md](docs/cli-reference.md) | CLI 命令完整参考（语法 / 参数 / 返回 / 示例） |
+| [docs/slot-store.md](docs/slot-store.md) | 槽位存储层设计：Flash 布局、覆盖写、扇区原理 |
+| [docs/rf-uart2-debug.md](docs/rf-uart2-debug.md) | 433 MHz 串口模块调试与回放时序结论 |
+| [docs/hardware-notes.md](docs/hardware-notes.md) | 供电树、BOM、打样与装配注意 |
 
-| 槽号 | 介质 | 存储格式 | 物理位置 |
-|---|---|---|---|
-| 0-95 | 红外 | 2KB 波形槽（510 段） | 扇区4/5/6 各前 64KB（每扇区 32 槽） |
-| 96-99 | 无效（保留） | — | — |
-| 100-611 | 射频 | 8B 码值槽（code24 + pulse） | 扇区7 前 4KB（512 槽） |
+## 硬件
+
+| 项 | 参数 |
+|---|---|
+| 版本 | v1.2（2026-11-26） |
+| 主控 | STM32F401（LQFP64，84 MHz，HSE 25 MHz） |
+| 板卡 | 32 × 34 mm，4 层 |
+| 供电 | Type-C VBUS / 电池 VIN 双路输入 |
+| 设计工具 | EasyEDA Pro 3.2 |
+
+## 已知限制
+
+- **红外槽容量**：单槽 2 KB ≈ 510 段，个别空调长码会超出（`BufferFull`），此时只能录前半段。
+- **射频协议**：只做 EV1527 类 24 bit 定长码；滚动码（HCS301 等）无法复制。
+- **回放阻塞**：发射为忙等实现，期间不响应新命令（串口中断仍在收字节）。
+- **单 Bank 擦写**：写 / 擦 Flash 时 CPU 取指停顿，属于设计前提，学习命令期间不执行实时任务。
+
+## 许可
+
+本项目采用 [MIT License](LICENSE) 发布，Copyright (c) 2026 hugokkl。
+
+可自由使用、修改、分发与商用，保留版权声明与许可声明即可。固件与硬件设计文件同受此许可约束。

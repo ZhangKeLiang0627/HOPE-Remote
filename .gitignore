@@ -55,11 +55,11 @@ dkms.conf
 *.dwo
 .vscode
 
-MDK-ARM/HOPE-Remote
+firmware/MDK-ARM/HOPE-Remote/
 
-MDK-ARM/HOPE-Remote.uvguix.*
+firmware/MDK-ARM/HOPE-Remote.uvguix.*
 
 docs/superpowers
 # Build log
-MDK-ARM/BuildLog.txt
-MDK-ARM/build.log
+firmware/MDK-ARM/BuildLog.txt
+firmware/MDK-ARM/build.log
