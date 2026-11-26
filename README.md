@@ -93,6 +93,7 @@ HOPE-Remote/
 │  ├─ MDK-ARM/        Keil 工程与构建产物
 │  └─ scripts/        编译 / 烧录 / 串口自测脚本
 ├─ hardware/          EasyEDA Pro 工程 + Gerber（v1.2）
+├─ images/            板卡预览图
 └─ docs/              设计与调试文档
 ```
 
@@ -109,6 +110,13 @@ HOPE-Remote/
 
 ## 硬件
 
+<p align="center">
+  <img src="images/pcb-render-1.jpg" width="46%" alt="HOPE-Remote PCB 预览 A">
+  <img src="images/pcb-render-2.jpg" width="46%" alt="HOPE-Remote PCB 预览 B">
+</p>
+
+<p align="center"><sub>HOPE-Remote v1.2 板卡预览 · EasyEDA Pro 导出</sub></p>
+
 | 项 | 参数 |
 |---|---|
 | 版本 | v1.2（2026-11-26） |
@@ -116,6 +124,8 @@ HOPE-Remote/
 | 板卡 | 32 × 34 mm，4 层 |
 | 供电 | Type-C VBUS / 电池 VIN 双路输入 |
 | 设计工具 | EasyEDA Pro 3.2 |
+
+设计文件（EasyEDA Pro 工程 + Gerber）见 [hardware/](hardware/README.md)。
 
 ## 已知限制
 
