@@ -53,9 +53,24 @@ HOPE-Remote ready (help for commands)
 
 发 `help` 有命令列表返回即固件正常运行。完整自检流程见 [../hardware/README.md](../hardware/README.md)。
 
+## 校验下载完整性
+
+```bash
+sha256sum HOPE-Remote-firmware.hex
+# 9b8dc91a9b7b982e5512689e63d1e05cff01386b0b8f9672894f44a08ef303cf  HOPE-Remote-firmware.hex
+```
+
+Windows PowerShell：
+
+```powershell
+(Get-FileHash .\HOPE-Remote-firmware.hex -Algorithm SHA256).Hash.ToLower()
+```
+
+> 仓库已通过 `.gitattributes` 将 `*.hex` 标记为二进制（`-text`），git 不会改写换行符，因此下载到的字节与上表摘要一致。
+
 ## 与源码构建的关系
 
-本文件与 `firmware/MDK-ARM/HOPE-Remote/HOPE-Remote.hex` 完全相同（同一份产物），只是重命名以便下载识别。
+本文件即 `firmware/MDK-ARM/HOPE-Remote/HOPE-Remote.hex`（Keil 构建产物，本地生成、不入库），只是重命名以便下载识别。
 
 如需自己从源码构建：
 
