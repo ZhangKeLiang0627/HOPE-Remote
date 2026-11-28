@@ -26,13 +26,14 @@ PA6  → 2 × WS2812B                 PC13 → 用户指示灯
 
 ## 4. 关键配件
 
-红外与射频的收发均为外购件，实物参考（购件前对照确认型号）：
+红外与射频的收发器件、天线均为外购件，实物参考（购件前对照确认型号）：
 
 <p align="center">
-  <img src="../images/accessory-1.jpg" width="23%" alt="收发配件 1">
-  <img src="../images/accessory-2.jpg" width="23%" alt="收发配件 2">
-  <img src="../images/accessory-3.jpg" width="23%" alt="收发配件 3">
-  <img src="../images/accessory-4.jpg" width="23%" alt="收发配件 4">
+  <img src="../images/accessory-1.jpg" width="18%" alt="收发配件 1">
+  <img src="../images/accessory-2.jpg" width="18%" alt="收发配件 2">
+  <img src="../images/accessory-3.jpg" width="18%" alt="收发配件 3">
+  <img src="../images/accessory-4.jpg" width="18%" alt="收发配件 4">
+  <img src="../images/accessory-5.jpg" width="18%" alt="433 MHz 天线">
 </p>
 
 | 用途 | 型号 | 接线 |
@@ -41,6 +42,7 @@ PA6  → 2 × WS2812B                 PC13 → 用户指示灯
 | 红外发射 | 940 nm 3 W 发射管 | PA1 经 AO3400A 驱动 |
 | 射频接收 | 灵-R1A-M5N-433MHz（**串口版**） | TX → PA3 |
 | 射频发射 | 远-T2L-433MHz | DATA ← PA5 |
+| 射频天线 | 433 MHz 天线（图 5，约 17 cm） | 接发射模块天线座 |
 
 > [!WARNING]
 > **射频接收器必须买「灵-R1A-M5N-433MHz 串口版」**
